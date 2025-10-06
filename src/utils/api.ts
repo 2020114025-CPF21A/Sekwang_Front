@@ -1,6 +1,6 @@
 
 // API 유틸리티 함수들
-const BASE_URL = 'http://localhost:8080/api';
+const BASE_URL = 'http://43.200.61.18:8080/api';
 
 // 토큰 관리
 export const getToken = (): string | null => {
