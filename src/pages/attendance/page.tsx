@@ -1,81 +1,94 @@
-
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Card from '../../components/base/Card';
 import Button from '../../components/base/Button';
 import { attendanceAPI } from '../../utils/api';
+
+type AttendanceRecord = {
+  attendDate: string;        // 'YYYY-MM-DD'
+  status: 'PRESENT' | 'LATE' | 'ABSENT' | string;
+};
 
 export default function Attendance() {
   const [attendanceCode, setAttendanceCode] = useState('');
   const [isCheckedIn, setIsCheckedIn] = useState(false);
   const [showQRScanner, setShowQRScanner] = useState(false);
-  const [user, setUser] = useState<any>(null);
-  const [attendanceHistory, setAttendanceHistory] = useState<any[]>([]);
+  const [user, setUser] = useState<{ username: string } | null>(null);
+  const [attendanceHistory, setAttendanceHistory] = useState<AttendanceRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  const todayCode = '2024';
+  // --- 유틸: 로컬(한국시간) 기준 YYYY-MM-DD ---
+  const formatLocalYmd = (d: Date) => {
+    const yyyy = d.getFullYear();
+    const mm = `${d.getMonth() + 1}`.padStart(2, '0');
+    const dd = `${d.getDate()}`.padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  };
+  const todayYmd = useMemo(() => formatLocalYmd(new Date()), []);
 
   useEffect(() => {
     const userData = localStorage.getItem('user');
     if (userData) {
-      const parsedUser = JSON.parse(userData);
-      setUser(parsedUser);
-      loadAttendanceHistory(parsedUser.username);
+      try {
+        const parsed = JSON.parse(userData);
+        setUser(parsed);
+        loadAttendanceHistory(parsed.username);
+      } catch {
+        localStorage.removeItem('user');
+      }
     }
   }, []);
 
   const loadAttendanceHistory = async (username: string) => {
     try {
       const history = await attendanceAPI.getUserAttendance(username);
-      setAttendanceHistory(history || []);
-      
-      // 오늘 출석 여부 확인
-      const today = new Date().toISOString().split('T')[0];
-      const todayAttendance = history?.find((record: any) => record.attendDate === today);
-      if (todayAttendance) {
-        setIsCheckedIn(true);
-      }
+      const arr: AttendanceRecord[] = Array.isArray(history) ? history : [];
+      setAttendanceHistory(arr);
+      // 오늘 출석 여부 갱신
+      const already = arr.some((r) => r.attendDate === todayYmd && r.status !== 'ABSENT');
+      setIsCheckedIn(already);
     } catch (error) {
       console.error('Failed to load attendance history:', error);
     }
   };
 
+  // 출석 코드 제출 (관리자 정책에 맞춰 검증이 필요하면 여기에 로직 추가)
   const handleCodeSubmit = async () => {
-    if (!user) {
-      alert('로그인이 필요합니다.');
+    if (!user) { alert('로그인이 필요합니다.'); return; }
+
+    // 예시: 코드가 비어있지 않으면 허용(백엔드에서 유효성 판단 없는 경우 프론트 제한 완화)
+    if (!attendanceCode || attendanceCode.length < 1) {
+      alert('출석 코드를 입력하세요.');
       return;
     }
 
-    if (attendanceCode === todayCode) {
-      setIsLoading(true);
-      try {
-        const today = new Date().toISOString().split('T')[0];
-        await attendanceAPI.register(user.username, today, 'PRESENT');
-        setIsCheckedIn(true);
-        setAttendanceCode('');
-        loadAttendanceHistory(user.username);
-      } catch (error) {
-        console.error('Failed to register attendance:', error);
-        alert('출석 등록에 실패했습니다.');
-      } finally {
-        setIsLoading(false);
-      }
-    } else {
-      alert('출석 코드가 올바르지 않습니다.');
-    }
-  };
-
-  const handleQRScan = async () => {
-    if (!user) {
-      alert('로그인이 필요합니다.');
+    if (isCheckedIn) {
+      alert('오늘은 이미 출석했습니다.');
       return;
     }
 
     setIsLoading(true);
-    // QR 스캔 시뮬레이션
+    try {
+      await attendanceAPI.register(user.username, todayYmd, 'PRESENT');
+      setIsCheckedIn(true);
+      setAttendanceCode('');
+      loadAttendanceHistory(user.username);
+    } catch (error) {
+      console.error('Failed to register attendance:', error);
+      alert('출석 등록에 실패했습니다.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // QR 스캔 시뮬레이션
+  const handleQRScan = async () => {
+    if (!user) { alert('로그인이 필요합니다.'); return; }
+    if (isCheckedIn) { alert('오늘은 이미 출석했습니다.'); return; }
+
+    setIsLoading(true);
     setTimeout(async () => {
       try {
-        const today = new Date().toISOString().split('T')[0];
-        await attendanceAPI.register(user.username, today, 'PRESENT');
+        await attendanceAPI.register(user.username, todayYmd, 'PRESENT');
         setIsCheckedIn(true);
         setShowQRScanner(false);
         loadAttendanceHistory(user.username);
@@ -85,7 +98,7 @@ export default function Attendance() {
       } finally {
         setIsLoading(false);
       }
-    }, 2000);
+    }, 1200);
   };
 
   const getStatusText = (status: string) => {
@@ -114,6 +127,30 @@ export default function Attendance() {
       default: return 'ri-question-line text-gray-600';
     }
   };
+
+  // --- 이번 주 범위(일~토) ---
+  const weekDays = useMemo(() => {
+    const today = new Date();
+    const start = new Date(today);
+    start.setDate(today.getDate() - today.getDay()); // 일요일
+    const days: string[] = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      days.push(formatLocalYmd(d));
+    }
+    return days;
+  }, []);
+
+  const weeklyRecords = useMemo(
+    () => attendanceHistory.filter((r) => weekDays.includes(r.attendDate)),
+    [attendanceHistory, weekDays]
+  );
+
+  const weeklyPresentCount = weeklyRecords.filter((r) => r.status === 'PRESENT').length;
+  const weeklyRate = weeklyRecords.length > 0
+    ? Math.round((weeklyPresentCount / weeklyRecords.length) * 100)
+    : 0;
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20 sm:pb-4">
@@ -208,12 +245,12 @@ export default function Attendance() {
                   onChange={(e) => setAttendanceCode(e.target.value)}
                   placeholder="출석 코드를 입력하세요"
                   className="flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-center text-lg font-mono bg-gray-50 focus:bg-white"
-                  maxLength={4}
+                  maxLength={12}
                   disabled={isLoading}
                 />
                 <Button
                   onClick={handleCodeSubmit}
-                  disabled={attendanceCode.length !== 4 || isLoading}
+                  disabled={!attendanceCode || isLoading}
                   className="px-4 py-3 rounded-xl flex-shrink-0"
                 >
                   {isLoading ? (
@@ -224,7 +261,7 @@ export default function Attendance() {
                 </Button>
               </div>
               <p className="text-xs text-gray-500 mt-2 text-center">
-                관리자가 알려준 4자리 코드를 입력하세요
+                관리자가 알려준 코드를 입력하세요
               </p>
             </div>
           </Card>
@@ -234,26 +271,33 @@ export default function Attendance() {
         <Card className="mb-6 p-4">
           <h3 className="text-lg font-semibold text-gray-800 mb-4">이번 주 출석 현황</h3>
           <div className="grid grid-cols-7 gap-2">
-            {['일', '월', '화', '수', '목', '금', '토'].map((day, index) => {
-              const dayDate = new Date();
-              dayDate.setDate(dayDate.getDate() - dayDate.getDay() + index);
-              const dateStr = dayDate.toISOString().split('T')[0];
-              const dayRecord = attendanceHistory.find(record => record.attendDate === dateStr);
-              
+            {['일', '월', '화', '수', '목', '금', '토'].map((dayLabel, idx) => {
+              const ymd = weekDays[idx];
+              const dayRecord = attendanceHistory.find((r) => r.attendDate === ymd);
               return (
-                <div key={day} className="text-center">
-                  <div className="text-xs text-gray-600 mb-2">{day}</div>
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center mx-auto ${
-                    dayRecord 
-                      ? dayRecord.status === 'PRESENT' ? 'bg-green-500' : 
-                        dayRecord.status === 'LATE' ? 'bg-yellow-500' : 'bg-red-500'
-                      : 'bg-gray-200'
-                  }`}>
+                <div key={dayLabel} className="text-center">
+                  <div className="text-xs text-gray-600 mb-2">{dayLabel}</div>
+                  <div
+                    className={`w-8 h-8 rounded-full flex items-center justify-center mx-auto ${
+                      dayRecord
+                        ? dayRecord.status === 'PRESENT'
+                          ? 'bg-green-500'
+                          : dayRecord.status === 'LATE'
+                          ? 'bg-yellow-500'
+                          : 'bg-red-500'
+                        : 'bg-gray-200'
+                    }`}
+                  >
                     {dayRecord && (
-                      <i className={`text-white text-sm ${
-                        dayRecord.status === 'PRESENT' ? 'ri-check-line' :
-                        dayRecord.status === 'LATE' ? 'ri-time-line' : 'ri-close-line'
-                      }`}></i>
+                      <i
+                        className={`text-white text-sm ${
+                          dayRecord.status === 'PRESENT'
+                            ? 'ri-check-line'
+                            : dayRecord.status === 'LATE'
+                            ? 'ri-time-line'
+                            : 'ri-close-line'
+                        }`}
+                      />
                     )}
                   </div>
                 </div>
@@ -262,11 +306,7 @@ export default function Attendance() {
           </div>
           <div className="mt-4 text-center">
             <span className="text-sm text-gray-600">이번 주 출석률: </span>
-            <span className="font-semibold text-blue-600">
-              {attendanceHistory.length > 0 
-                ? Math.round((attendanceHistory.filter(r => r.status === 'PRESENT').length / attendanceHistory.length) * 100)
-                : 0}%
-            </span>
+            <span className="font-semibold text-blue-600">{weeklyRate}%</span>
           </div>
         </Card>
 
@@ -275,29 +315,41 @@ export default function Attendance() {
           <h3 className="text-lg font-semibold text-gray-800 mb-4">출석 기록</h3>
           <div className="space-y-3">
             {attendanceHistory.length > 0 ? (
-              attendanceHistory.slice(0, 10).map((record, index) => (
-                <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <div className="flex items-center">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-3 ${
-                      record.status === 'PRESENT' ? 'bg-green-100' :
-                      record.status === 'LATE' ? 'bg-yellow-100' : 'bg-red-100'
-                    }`}>
-                      <i className={`text-sm ${getStatusIcon(record.status)}`}></i>
+              attendanceHistory
+                .slice()
+                .sort((a, b) => (a.attendDate < b.attendDate ? 1 : -1))
+                .slice(0, 10)
+                .map((record, index) => (
+                  <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div className="flex items-center">
+                      <div
+                        className={`w-8 h-8 rounded-full flex items-center justify-center mr-3 ${
+                          record.status === 'PRESENT'
+                            ? 'bg-green-100'
+                            : record.status === 'LATE'
+                            ? 'bg-yellow-100'
+                            : 'bg-red-100'
+                        }`}
+                      >
+                        <i className={`text-sm ${getStatusIcon(record.status)}`} />
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-800 text-sm">
+                          {new Date(record.attendDate).toLocaleDateString('ko-KR', {
+                            month: 'long',
+                            day: 'numeric',
+                          })}
+                        </p>
+                        <p className="text-xs text-gray-600">
+                          {new Date(record.attendDate).toLocaleDateString('ko-KR', { weekday: 'long' })}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-medium text-gray-800 text-sm">
-                        {new Date(record.attendDate).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })}
-                      </p>
-                      <p className="text-xs text-gray-600">
-                        {new Date(record.attendDate).toLocaleDateString('ko-KR', { weekday: 'long' })}
-                      </p>
+                    <div className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(record.status)}`}>
+                      {getStatusText(record.status)}
                     </div>
                   </div>
-                  <div className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(record.status)}`}>
-                    {getStatusText(record.status)}
-                  </div>
-                </div>
-              ))
+                ))
             ) : (
               <div className="text-center py-8 text-gray-500">
                 <i className="ri-calendar-line text-4xl mb-2"></i>

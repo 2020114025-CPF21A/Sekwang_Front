@@ -1,82 +1,134 @@
-
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Card from '../../components/base/Card';
 import Button from '../../components/base/Button';
 import { offeringAPI } from '../../utils/api';
+
+type OfferingRecord = {
+  id?: number;
+  note?: string;                       // 헌금 종류/메모
+  amount: number | string;             // BigDecimal이 문자열로 올 수도 있음
+  offeredAt?: string;                  // 백엔드 필드명
+  createdAt?: string;                  // 혹시 다른 이름으로 올 수도 있어 대비
+  date?: string;                       // 구형 대비
+};
 
 export default function Offering() {
   const [amount, setAmount] = useState('');
   const [purpose, setPurpose] = useState('십일조');
   const [isSubmitted, setIsSubmitted] = useState(false);
-  const [user, setUser] = useState<any>(null);
-  const [offeringHistory, setOfferingHistory] = useState<any[]>([]);
+  const [user, setUser] = useState<{ username: string } | null>(null);
+
+  const [offeringHistory, setOfferingHistory] = useState<OfferingRecord[]>([]);
   const [totalOffering, setTotalOffering] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
 
+  // 로그인 사용자
   useEffect(() => {
-    const userData = localStorage.getItem('user');
-    if (userData) {
-      const parsedUser = JSON.parse(userData);
-      setUser(parsedUser);
-      loadOfferingData(parsedUser.username);
+    try {
+      const raw = localStorage.getItem('user');
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed?.username) {
+        setUser(parsed);
+        loadOfferingData(parsed.username);
+      }
+    } catch {
+      localStorage.removeItem('user');
     }
   }, []);
+
+  // 안전 날짜 파서 (스페이스 -> 'T' 치환, 실패 시 원문 유지)
+  const parseDate = (s?: string) => {
+    if (!s) return null;
+    const iso = s.includes('T') ? s : s.replace(' ', 'T');
+    const d = new Date(iso);
+    return isNaN(d.getTime()) ? null : d;
+  };
+
+  // 금액 숫자화
+  const toNumber = (v: number | string | undefined | null) => {
+    if (v === null || v === undefined) return 0;
+    if (typeof v === 'number') return v;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  };
 
   const loadOfferingData = async (username: string) => {
     try {
       const [history, summary] = await Promise.all([
         offeringAPI.getUserOfferings(username),
-        offeringAPI.getUserSummary(username)
+        offeringAPI.getUserSummary(username),
       ]);
-      
-      setOfferingHistory(history || []);
-      setTotalOffering(summary?.total || 0);
+
+      const list: OfferingRecord[] = (Array.isArray(history) ? history : []).map((r: any) => ({
+        id: Number(r.id ?? 0),
+        note: r.note ?? r.purpose ?? '',
+        amount: r.amount,                         // 숫자/문자열 모두 허용
+        offeredAt: r.offeredAt ?? r.createdAt ?? r.date,
+      }));
+
+      // 최신순 정렬 (offeredAt 우선)
+      list.sort((a, b) => {
+        const ad = parseDate(a.offeredAt || a.createdAt || a.date)?.getTime() ?? 0;
+        const bd = parseDate(b.offeredAt || b.createdAt || b.date)?.getTime() ?? 0;
+        return bd - ad;
+      });
+
+      setOfferingHistory(list);
+      setTotalOffering(toNumber(summary?.total));
     } catch (error) {
       console.error('Failed to load offering data:', error);
     }
   };
 
   const handleSubmit = async () => {
-    if (!user) {
+    if (!user?.username) {
       alert('로그인이 필요합니다.');
       return;
     }
-
-    if (amount && parseFloat(amount) > 0) {
-      setIsLoading(true);
-      try {
-        await offeringAPI.register(user.username, parseFloat(amount), purpose);
-        setIsSubmitted(true);
-        setAmount('');
-        loadOfferingData(user.username);
-      } catch (error) {
-        console.error('Failed to register offering:', error);
-        alert('헌금 기록에 실패했습니다.');
-      } finally {
-        setIsLoading(false);
-      }
-    } else {
+    if (!amount || Number(amount) <= 0) {
       alert('올바른 헌금 금액을 입력해주세요.');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      await offeringAPI.register(user.username, Number(amount), purpose);
+      setIsSubmitted(true);
+      setAmount('');
+      await loadOfferingData(user.username);
+    } catch (error) {
+      console.error('Failed to register offering:', error);
+      alert('헌금 기록에 실패했습니다.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const thisMonth = new Date().getMonth() + 1;
-  const thisYear = new Date().getFullYear();
-  
-  const thisMonthOfferings = offeringHistory.filter(record => {
-    const recordDate = new Date(record.createdAt || record.date);
-    return recordDate.getMonth() + 1 === thisMonth && recordDate.getFullYear() === thisYear;
-  });
-  
-  const lastMonthOfferings = offeringHistory.filter(record => {
-    const recordDate = new Date(record.createdAt || record.date);
-    const lastMonth = thisMonth === 1 ? 12 : thisMonth - 1;
-    const lastMonthYear = thisMonth === 1 ? thisYear - 1 : thisYear;
-    return recordDate.getMonth() + 1 === lastMonth && recordDate.getFullYear() === lastMonthYear;
-  });
+  // 월별 집계
+  const now = useMemo(() => new Date(), []);
+  const thisMonth = now.getMonth() + 1;
+  const thisYear = now.getFullYear();
+  const lastMonth = thisMonth === 1 ? 12 : thisMonth - 1;
+  const lastMonthYear = thisMonth === 1 ? thisYear - 1 : thisYear;
 
-  const thisMonthTotal = thisMonthOfferings.reduce((sum, record) => sum + record.amount, 0);
-  const lastMonthTotal = lastMonthOfferings.reduce((sum, record) => sum + record.amount, 0);
+  const monthFilter = (rec: OfferingRecord, y: number, m: number) => {
+    const d =
+      parseDate(rec.offeredAt) ||
+      parseDate(rec.createdAt) ||
+      parseDate(rec.date);
+    return d ? d.getFullYear() === y && d.getMonth() + 1 === m : false;
+  };
+
+  const thisMonthTotal = offeringHistory
+    .filter((r) => monthFilter(r, thisYear, thisMonth))
+    .reduce((sum, r) => sum + toNumber(r.amount), 0);
+
+  const lastMonthTotal = offeringHistory
+    .filter((r) => monthFilter(r, lastMonthYear, lastMonth))
+    .reduce((sum, r) => sum + toNumber(r.amount), 0);
+
+  const fmtKRW = (n: number) => `${n.toLocaleString()}원`;
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20 sm:pb-4">
@@ -126,13 +178,13 @@ export default function Offering() {
                     className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm bg-white"
                     disabled={isLoading}
                   />
-                  <span className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-500 text-sm">원</span>
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 text-sm">원</span>
                 </div>
               </div>
-              
-              <Button 
-                onClick={handleSubmit} 
-                variant="success" 
+
+              <Button
+                onClick={handleSubmit}
+                variant="success"
                 className="w-full py-3 rounded-xl mt-6"
                 disabled={isLoading}
               >
@@ -157,9 +209,7 @@ export default function Offering() {
               <h3 className="text-xl font-bold text-green-600 mb-2">헌금 기록 완료!</h3>
               <p className="text-gray-600 mb-4">헌금이 정상적으로 기록되었습니다.</p>
               <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-4">
-                <p className="text-sm text-green-700">
-                  기록 시간: {new Date().toLocaleString('ko-KR')}
-                </p>
+                <p className="text-sm text-green-700">기록 시간: {new Date().toLocaleString('ko-KR')}</p>
               </div>
               <Button onClick={() => setIsSubmitted(false)} variant="secondary" className="rounded-xl">
                 새 헌금 기록하기
@@ -168,47 +218,30 @@ export default function Offering() {
           )}
         </Card>
 
-        {/* Monthly Statistics */}
+        {/* Monthly Statistics (목표 바 제거됨) */}
         <Card className="mb-6 p-4">
           <h3 className="text-lg font-semibold text-gray-800 mb-4">헌금 통계</h3>
           <div className="space-y-3">
             <div className="bg-green-50 border border-green-200 rounded-xl p-4">
               <div className="flex justify-between items-center">
                 <span className="text-sm font-medium text-green-700">이번 달 헌금</span>
-                <span className="text-lg font-bold text-green-600">
-                  {thisMonthTotal.toLocaleString()}원
-                </span>
+                <span className="text-lg font-bold text-green-600">{fmtKRW(thisMonthTotal)}</span>
               </div>
             </div>
-            
+
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
               <div className="flex justify-between items-center">
                 <span className="text-sm font-medium text-blue-700">지난 달 헌금</span>
-                <span className="text-lg font-bold text-blue-600">
-                  {lastMonthTotal.toLocaleString()}원
-                </span>
+                <span className="text-lg font-bold text-blue-600">{fmtKRW(lastMonthTotal)}</span>
               </div>
             </div>
-            
+
             <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
               <div className="flex justify-between items-center">
                 <span className="text-sm font-medium text-purple-700">총 헌금</span>
-                <span className="text-lg font-bold text-purple-600">
-                  {totalOffering.toLocaleString()}원
-                </span>
+                <span className="text-lg font-bold text-purple-600">{fmtKRW(totalOffering)}</span>
               </div>
             </div>
-          </div>
-
-          <div className="mt-6 pt-4 border-t border-gray-200">
-            <p className="text-sm text-gray-600 mb-3 text-center">이번 달 헌금 목표</p>
-            <div className="w-full bg-gray-200 rounded-full h-3 mb-2">
-              <div 
-                className="bg-green-600 h-3 rounded-full transition-all duration-500"
-                style={{ width: `${Math.min((thisMonthTotal / 50000) * 100, 100)}%` }}
-              ></div>
-            </div>
-            <p className="text-xs text-gray-500 text-center">목표: 50,000원 ({Math.round((thisMonthTotal / 50000) * 100)}% 달성)</p>
           </div>
         </Card>
 
@@ -217,23 +250,34 @@ export default function Offering() {
           <h3 className="text-lg font-semibold text-gray-800 mb-4">헌금 기록 내역</h3>
           <div className="space-y-3">
             {offeringHistory.length > 0 ? (
-              offeringHistory.slice(0, 10).map((record, index) => (
-                <div key={index} className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-3 h-3 bg-green-500 rounded-full flex-shrink-0"></div>
-                    <div>
-                      <p className="font-medium text-gray-800 text-sm">{record.note}</p>
-                      <p className="text-xs text-gray-600">
-                        {new Date(record.createdAt || record.date).toLocaleDateString('ko-KR')}
+              offeringHistory.slice(0, 10).map((record, idx) => {
+                const d =
+                  parseDate(record.offeredAt) ||
+                  parseDate(record.createdAt) ||
+                  parseDate(record.date);
+                return (
+                  <div
+                    key={record.id ?? idx}
+                    className="flex items-center justify-between p-4 bg-gray-50 rounded-xl"
+                  >
+                    <div className="flex items-center space-x-3">
+                      <div className="w-3 h-3 bg-green-500 rounded-full flex-shrink-0"></div>
+                      <div>
+                        <p className="font-medium text-gray-800 text-sm">{record.note || '헌금'}</p>
+                        <p className="text-xs text-gray-600">
+                          {d ? d.toLocaleDateString('ko-KR') : (record.offeredAt || record.createdAt || record.date || '')}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-bold text-green-600">
+                        {fmtKRW(toNumber(record.amount))}
                       </p>
+                      <p className="text-xs text-green-500">완료</p>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-sm font-bold text-green-600">{record.amount.toLocaleString()}원</p>
-                    <p className="text-xs text-green-500">완료</p>
-                  </div>
-                </div>
-              ))
+                );
+              })
             ) : (
               <div className="text-center py-8 text-gray-500">
                 <i className="ri-hand-heart-line text-4xl mb-2"></i>

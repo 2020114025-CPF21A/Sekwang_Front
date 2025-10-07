@@ -1,215 +1,288 @@
+// src/utils/api.ts
 
-// API 유틸리티 함수들
-const BASE_URL = 'http://43.200.61.18:8080/api';
+// ===== 기본 설정 =====
+const API_BASE =
+  (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_API_BASE_URL) ||
+  'http://localhost:8080';
+const BASE_URL = `${API_BASE}/api`;
 
-// 토큰 관리
-export const getToken = (): string | null => {
-  return localStorage.getItem('token');
-};
+// ===== 토큰 관리 =====
+export const getToken = (): string | null => localStorage.getItem('token');
+export const setToken = (token: string): void => localStorage.setItem('token', token);
+export const removeToken = (): void => localStorage.removeItem('token');
 
-export const setToken = (token: string): void => {
-  localStorage.setItem('token', token);
-};
-
-export const removeToken = (): void => {
-  localStorage.removeItem('token');
-};
-
-// API 요청 헤더 생성
-const getHeaders = (includeAuth: boolean = true): HeadersInit => {
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-  };
-  
-  if (includeAuth) {
-    const token = getToken();
-    if (token) {
-      headers.Authorization = `Bearer ${token}`;
-    }
-  }
-  
-  return headers;
-};
-
-// 공통 API 요청 함수
-const apiRequest = async (
+// ===== 공통 요청 유틸 =====
+async function apiRequest(
   endpoint: string,
   options: RequestInit = {},
   includeAuth: boolean = true
-): Promise<any> => {
+): Promise<any> {
   const url = `${BASE_URL}${endpoint}`;
+
+  // 헤더 구성 (FormData면 Content-Type 자동 생략)
+  const headers = new Headers(options.headers || {});
+  if (!headers.has('Content-Type') && !(options.body instanceof FormData)) {
+    headers.set('Content-Type', 'application/json');
+  }
+  if (includeAuth) {
+    const token = getToken();
+    if (token) headers.set('Authorization', `Bearer ${token}`);
+  }
+
   const config: RequestInit = {
     ...options,
-    headers: {
-      ...getHeaders(includeAuth),
-      ...options.headers,
-    },
+    headers,
+    credentials: options.credentials ?? 'omit',
   };
 
+  let res: Response;
   try {
-    const response = await fetch(url, config);
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      return await response.json();
-    }
-    
-    return response;
-  } catch (error) {
-    console.error('API request failed:', error);
-    throw error;
+    res = await fetch(url, config);
+  } catch (e) {
+    console.error('Network error:', e);
+    throw new Error('네트워크 오류가 발생했습니다.');
   }
-};
 
-// 인증 API
+  if (!res.ok) {
+    let msg = `${res.status} ${res.statusText}`;
+    try {
+      const ct = res.headers.get('content-type');
+      if (ct && ct.includes('application/json')) {
+        const j = await res.json();
+        msg = j?.message || j?.error || msg;
+      } else {
+        const t = await res.text();
+        if (t) msg = t;
+      }
+    } catch {
+      /* noop */
+    }
+    throw new Error(msg);
+  }
+
+  if (res.status === 204) return null;
+
+  const contentType = res.headers.get('content-type');
+  if (contentType && contentType.includes('application/json')) {
+    return res.json();
+  }
+  return res;
+}
+
+// ===== 인증 API =====
 export const authAPI = {
   login: (username: string, password: string) =>
-    apiRequest('/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ username, password }),
-    }, false),
-    
+    apiRequest(
+      '/auth/login',
+      { method: 'POST', body: JSON.stringify({ username, password }) },
+      false
+    ),
   signup: (username: string, password: string, displayName: string, role: string = 'MEMBER') =>
-    apiRequest('/auth/signup', {
-      method: 'POST',
-      body: JSON.stringify({ username, password, displayName, role }),
-    }, false),
+    apiRequest(
+      '/auth/signup',
+      { method: 'POST', body: JSON.stringify({ username, password, displayName, role }) },
+      false
+    ),
 };
 
-// 출석 API
+// ===== 출석 API =====
 export const attendanceAPI = {
   register: (username: string, attendDate: string, status: string = 'PRESENT') =>
     apiRequest('/attendance', {
       method: 'POST',
       body: JSON.stringify({ username, attendDate, status }),
     }),
-    
-  getUserAttendance: (username: string) =>
-    apiRequest(`/attendance/user/${username}`),
+  getUserAttendance: (username: string) => apiRequest(`/attendance/user/${username}`),
 };
 
-// 헌금 API
+// ===== 헌금 API =====
 export const offeringAPI = {
   register: (username: string, amount: number, note: string) =>
     apiRequest('/offerings', {
       method: 'POST',
       body: JSON.stringify({ username, amount, note }),
     }),
-    
-  getUserOfferings: (username: string) =>
-    apiRequest(`/offerings/user/${username}`),
-    
-  getUserSummary: (username: string) =>
-    apiRequest(`/offerings/summary/user/${username}`),
+  getUserOfferings: (username: string) => apiRequest(`/offerings/user/${encodeURIComponent(username)}`),
+  getUserSummary: (username: string) => apiRequest(`/offerings/summary/user/${encodeURIComponent(username)}`),
 };
 
-// QT API
+
+// ===== QT API (변경된 백엔드와 동일 엔드포인트 유지) =====
 export const qtAPI = {
-  create: (username: string, qtDate: string, scriptureRef: string, meditation: string, prayerTopic: string) =>
+  create: (
+    username: string,
+    qtDate: string,
+    scriptureRef: string,
+    meditation: string,
+    prayerTopic: string
+  ) =>
     apiRequest('/qt', {
       method: 'POST',
       body: JSON.stringify({ username, qtDate, scriptureRef, meditation, prayerTopic }),
     }),
-    
-  getUserQTs: (username: string) =>
-    apiRequest(`/qt/user/${username}`),
-    
+  getUserQTs: (username: string) => apiRequest(`/qt/user/${username}`),
   like: (id: number) =>
     apiRequest(`/qt/${id}/like`, {
       method: 'PATCH',
     }),
 };
 
-// 공지사항 API
-export const noticeAPI = {
-  create: (title: string, content: string, isImportant: boolean, author: string) =>
-    apiRequest('/notices', {
-      method: 'POST',
-      body: JSON.stringify({ title, content, isImportant, author }),
-    }),
-    
-  getAll: () =>
-    apiRequest('/notices'),
+// ===== 공지사항 API =====
+export type NoticeUpdatePayload = {
+  title?: string;
+  content?: string;
+  isImportant?: boolean;
+  authorId?: string;
 };
 
-// 신앙 일지 API
+export type NoticeDto = {
+  id: number;
+  title: string;
+  content: string;
+  isImportant: boolean;
+  author?: { username?: string; displayName?: string } | string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export const noticeAPI = {
+  create: (title: string, content: string, isImportant: boolean, authorId: string) =>
+    apiRequest('/notices', {
+      method: 'POST',
+      body: JSON.stringify({ title, content, isImportant, authorId }),
+    }),
+  getAll: (): Promise<NoticeDto[]> => apiRequest('/notices'),
+  getById: (id: number): Promise<NoticeDto> => apiRequest(`/notices/${id}`),
+  update: (id: number, payload: NoticeUpdatePayload) =>
+    apiRequest(`/notices/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  remove: (id: number) => apiRequest(`/notices/${id}`, { method: 'DELETE' }),
+  canEdit: (notice: NoticeDto, currentUser?: { username: string; role?: string }) => {
+    if (!currentUser) return false;
+    const role = (currentUser.role || '').toUpperCase();
+    if (role === 'ADMIN' || role === 'LEADER') return true;
+    const authorUsername =
+      typeof notice.author === 'string'
+        ? notice.author
+        : (notice.author?.username as string | undefined);
+    return !!authorUsername && authorUsername === currentUser.username;
+  },
+};
+
+// ===== 신앙 일지 API =====
 export const faithAPI = {
   create: (author: string, moodCode: number, weatherCode: number, title: string, content: string) =>
-    apiRequest('/faith', {
+    apiRequest('/faith-journals', {
       method: 'POST',
       body: JSON.stringify({ author, moodCode, weatherCode, title, content }),
     }),
-    
-  getAll: () =>
-    apiRequest('/faith'),
-    
-  getById: (id: number) =>
-    apiRequest(`/faith/${id}`),
+  getUserJournals: (username: string, page = 0, size = 20) =>
+    apiRequest(`/faith-journals/user/${username}?page=${page}&size=${size}`),
+  getById: (id: number) => apiRequest(`/faith-journals/${id}`),
 };
 
-// 사진첩 API
+// ===== 사진첩 API (S3 업로드: /gallery/upload) =====
 export const galleryAPI = {
-  create: (title: string, category: string, fileUrl: string, description: string, uploader: string) =>
-    apiRequest('/gallery', {
+  upload: (file: File, title: string, category: string, description: string, uploader: string) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('title', title);
+    fd.append('category', category || '');
+    fd.append('description', description || '');
+    fd.append('uploader', uploader);
+
+    const token = getToken();
+    return fetch(`${BASE_URL}/gallery/upload`, {
       method: 'POST',
-      body: JSON.stringify({ title, category, fileUrl, description, uploader }),
-    }),
-    
-  getAll: () =>
-    apiRequest('/gallery'),
-    
-  getById: (id: number) =>
-    apiRequest(`/gallery/${id}`),
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      body: fd,
+    }).then(async (res) => {
+      if (!res.ok) {
+        const msg = await res.text();
+        throw new Error(msg || `HTTP ${res.status}`);
+      }
+      return res.json();
+    });
+  },
+  getAll: () => apiRequest('/gallery'),
+  getById: (id: number) => apiRequest(`/gallery/${id}`),
+  delete: (id: number) => apiRequest(`/gallery/${id}`, { method: 'DELETE' }),
 };
 
-// 주보 API
+// ===== 주보 API =====
+export type BulletinRes = {
+  bulletinNo: number;
+  uploader: string | null;     // 서버에서 username 문자열 또는 null
+  title: string;
+  publishDate: string;         // ISO or yyyy-MM-dd
+  fileUrl: string;
+  views: number;
+};
+
+// ===== 주보 API =====
 export const bulletinAPI = {
-  create: (uploader: string, title: string, publishDate: string, fileUrl: string) =>
-    apiRequest('/bulletins', {
+  /** S3 업로드 + DB 저장 */
+  upload: (file: File, uploader: string, title: string, publishDate: string) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('uploader', uploader);
+    formData.append('title', title);
+    formData.append('publishDate', publishDate);
+
+    return apiRequest('/bulletins/upload', {
       method: 'POST',
-      body: JSON.stringify({ uploader, title, publishDate, fileUrl }),
-    }),
-    
-  getAll: () =>
-    apiRequest('/bulletins'),
-    
-  getById: (id: number) =>
-    apiRequest(`/bulletins/${id}`),
+      body: formData,
+    });
+  },
+
+  getAll: (page = 0, size = 20) =>
+    apiRequest(`/bulletins?page=${page}&size=${size}`),
+
+  getByNo: (no: number) =>
+    apiRequest(`/bulletins/${no}`),
+
+  remove: (no: number) =>
+    apiRequest(`/bulletins/${no}`, { method: 'DELETE' }),
 };
 
-// 찬양 API
+// ===== 찬양 API (S3 업로드) =====
 export const songAPI = {
-  create: (uploader: string, title: string, artist: string, category: string, musicalKey: string, tempoBpm: number, imageUrl: string) =>
-    apiRequest('/songs', {
+  upload: (
+    file: File,
+    title: string,
+    artist: string,
+    category: string,
+    musicalKey: string,
+    tempoBpm: number,
+    uploader: string
+  ) => {
+    const fd = new FormData();
+    fd.append('image', file);            // ⬅️ 'file' -> 'image'
+    fd.append('title', title);
+    fd.append('artist', artist || '');
+    fd.append('category', category || '기타');
+    fd.append('musicalKey', musicalKey || '');
+    fd.append('tempoBpm', String(tempoBpm || 0));
+    fd.append('uploader', uploader);
+
+    const token = getToken();
+    return fetch(`${BASE_URL}/songs/upload`, {
       method: 'POST',
-      body: JSON.stringify({ uploader, title, artist, category, musicalKey, tempoBpm, imageUrl }),
-    }),
-    
-  getAll: () =>
-    apiRequest('/songs'),
-    
-  getById: (id: number) =>
-    apiRequest(`/songs/${id}`),
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      body: fd,
+    }).then(async (res) => {
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    });
+  },
+
+  getAll: () => apiRequest('/songs'),
+  getById: (id: number) => apiRequest(`/songs/${id}`),
 };
 
-// 객관식 퀴즈 API
+// ===== 퀴즈 API =====
 export const mcAPI = {
-  createSet: (setName: string) =>
-    apiRequest('/mc/sets', {
-      method: 'POST',
-      body: JSON.stringify({ setName }),
-    }),
-    
-  addQuestion: (setId: number, question: string, choice1: string, choice2: string, choice3: string, choice4: string, answerNo: number) =>
-    apiRequest(`/mc/sets/${setId}/questions`, {
-      method: 'POST',
-      body: JSON.stringify({ question, choice1, choice2, choice3, choice4, answerNo }),
-    }),
-    
+  getAllSets: () => apiRequest('/mc/sets'),
+  getSet: (setId: number) => apiRequest(`/mc/sets/${setId}`),
   saveResult: (username: string, setId: number, score: number) =>
     apiRequest('/mc/results', {
       method: 'POST',
@@ -217,20 +290,9 @@ export const mcAPI = {
     }),
 };
 
-// OX 퀴즈 API
 export const oxAPI = {
-  createSet: (setName: string) =>
-    apiRequest('/ox/sets', {
-      method: 'POST',
-      body: JSON.stringify({ setName }),
-    }),
-    
-  addQuestion: (setId: number, question: string, answer: number) =>
-    apiRequest(`/ox/sets/${setId}/questions`, {
-      method: 'POST',
-      body: JSON.stringify({ question, answer }),
-    }),
-    
+  getAllSets: () => apiRequest('/ox/sets'),
+  getSet: (setId: number) => apiRequest(`/ox/sets/${setId}`),
   saveResult: (username: string, setId: number, score: number) =>
     apiRequest('/ox/results', {
       method: 'POST',
@@ -238,23 +300,15 @@ export const oxAPI = {
     }),
 };
 
-// 스피드 퀴즈 API
 export const speedAPI = {
-  createSet: (setName: string) =>
-    apiRequest('/speed/sets', {
-      method: 'POST',
-      body: JSON.stringify({ setName }),
-    }),
-    
-  addQuestion: (setId: number, question: string, accept1: string, accept2: string, accept3: string) =>
-    apiRequest(`/speed/sets/${setId}/questions`, {
-      method: 'POST',
-      body: JSON.stringify({ question, accept1, accept2, accept3 }),
-    }),
-    
+  getAllSets: () => apiRequest('/speed/sets'),
+  getSet: (setId: number) => apiRequest(`/speed/sets/${setId}`),
   saveResult: (username: string, setId: number, score: number) =>
     apiRequest('/speed/results', {
       method: 'POST',
       body: JSON.stringify({ username, setId, score }),
     }),
 };
+
+// 필요 시 공용 export
+export { apiRequest };

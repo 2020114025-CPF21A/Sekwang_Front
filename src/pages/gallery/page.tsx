@@ -1,82 +1,181 @@
-
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Card from '../../components/base/Card';
 import Button from '../../components/base/Button';
+import { galleryAPI } from '../../utils/api';
+
+type GalleryItem = {
+  id: number;
+  title: string;
+  category: string;
+  description?: string;
+  fileUrl: string;     // S3 URL
+  uploader?: string;   // 서버에서 username 문자열로 내려옴
+  createdAt?: string;
+  likes?: number;
+};
 
 export default function Gallery() {
   const [selectedCategory, setSelectedCategory] = useState('전체');
-  const [selectedImage, setSelectedImage] = useState<any>(null);
+  const [selectedImage, setSelectedImage] = useState<GalleryItem | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [items, setItems] = useState<GalleryItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [dragActive, setDragActive] = useState(false);
+
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // 업로드 폼 상태
+  const [form, setForm] = useState({
+    title: '',
+    category: '예배',
+    description: '',
+    fileObj: null as File | null,
+    filePreview: '' as string,
+  });
+
+  // 로그인 사용자
+  const user = useMemo(() => {
+    try {
+      const raw = localStorage.getItem('user');
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  }, []);
 
   const categories = ['전체', '예배', '수련회', '봉사활동', '친교', '기타'];
 
-  const photos = [
-    {
-      id: 1,
-      title: '2024 신년 예배',
-      category: '예배',
-      date: '2024.01.07',
-      image: 'https://readdy.ai/api/search-image?query=Korean%20church%20youth%20worship%20service%20with%20teenagers%20praying%20and%20singing%20together%20in%20modern%20church%20sanctuary%20with%20warm%20lighting%20and%20contemporary%20design&width=400&height=300&seq=1&orientation=landscape',
-      description: '새해 첫 주일 청소년부 예배 모습입니다.',
-      likes: 15
-    },
-    {
-      id: 2,
-      title: '겨울 수련회 준비',
-      category: '수련회',
-      date: '2024.01.10',
-      image: 'https://readdy.ai/api/search-image?query=Korean%20teenagers%20preparing%20for%20winter%20church%20retreat%20with%20luggage%20and%20excited%20expressions%20in%20church%20hall%20with%20banners%20and%20preparation%20materials&width=400&height=300&seq=2&orientation=landscape',
-      description: '겨울 수련회를 준비하는 청소년들의 모습',
-      likes: 23
-    },
-    {
-      id: 3,
-      title: '지역 봉사활동',
-      category: '봉사활동',
-      date: '2024.01.13',
-      image: 'https://readdy.ai/api/search-image?query=Korean%20church%20youth%20volunteers%20doing%20community%20service%20helping%20elderly%20people%20with%20warm%20smiles%20and%20caring%20gestures%20in%20bright%20outdoor%20setting&width=400&height=300&seq=3&orientation=landscape',
-      description: '지역 어르신들을 위한 봉사활동',
-      likes: 18
-    },
-    {
-      id: 4,
-      title: '찬양팀 연습',
-      category: '예배',
-      date: '2024.01.14',
-      image: 'https://readdy.ai/api/search-image?query=Korean%20church%20youth%20praise%20team%20practicing%20with%20guitars%20keyboards%20and%20microphones%20in%20modern%20church%20music%20room%20with%20instruments%20and%20sound%20equipment&width=400&height=300&seq=4&orientation=landscape',
-      description: '주일 예배를 위한 찬양팀 연습 시간',
-      likes: 12
-    },
-    {
-      id: 5,
-      title: '친교 시간',
-      category: '친교',
-      date: '2024.01.15',
-      image: 'https://readdy.ai/api/search-image?query=Korean%20church%20teenagers%20having%20fellowship%20time%20eating%20snacks%20and%20laughing%20together%20in%20bright%20church%20fellowship%20hall%20with%20tables%20and%20chairs&width=400&height=300&seq=5&orientation=landscape',
-      description: '예배 후 함께하는 즐거운 친교 시간',
-      likes: 20
-    },
-    {
-      id: 6,
-      title: '성경공부 모임',
-      category: '기타',
-      date: '2024.01.16',
-      image: 'https://readdy.ai/api/search-image?query=Korean%20church%20youth%20bible%20study%20group%20sitting%20in%20circle%20with%20open%20bibles%20and%20notebooks%20discussing%20scripture%20in%20cozy%20church%20classroom%20setting&width=400&height=300&seq=6&orientation=landscape',
-      description: '매주 화요일 성경공부 모임',
-      likes: 14
+  // 목록 로드
+  const loadItems = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await galleryAPI.getAll();
+      const normalized: GalleryItem[] = (Array.isArray(data) ? data : []).map((it: any) => ({
+        id: Number(it.id ?? 0),
+        title: it.title ?? '',
+        category: it.category ?? '기타',
+        description: it.description ?? '',
+        fileUrl: it.fileUrl ?? '',
+        uploader: typeof it.uploader === 'string' ? it.uploader : (it.uploader?.username ?? ''),
+        createdAt: it.createdAt ?? '',
+        likes: Number(it.likes ?? 0),
+      }));
+      setItems(normalized.filter((x) => x.fileUrl));
+    } catch (e) {
+      console.error('Failed to fetch gallery:', e);
+      setError('사진 목록을 불러오지 못했습니다.');
+    } finally {
+      setLoading(false);
     }
-  ];
+  };
 
-  const filteredPhotos = selectedCategory === '전체' 
-    ? photos 
-    : photos.filter(photo => photo.category === selectedCategory);
+  useEffect(() => {
+    loadItems();
+  }, []);
 
-  const handleUpload = () => {
-    setIsUploading(true);
-    setTimeout(() => {
-      setIsUploading(false);
+  const filtered =
+    selectedCategory === '전체'
+      ? items
+      : items.filter((p) => p.category === selectedCategory);
+
+  // 날짜 포맷
+  const fmtDate = (s?: string) => {
+    if (!s) return '';
+    try {
+      const d = new Date(s);
+      if (isNaN(d.getTime())) return s;
+      return d.toLocaleDateString('ko-KR');
+    } catch {
+      return s;
+    }
+  };
+
+  // 파일 선택 (수동 업로드용)
+  const onPickFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0] || null;
+    if (!f) {
+      setForm((prev) => ({ ...prev, fileObj: null, filePreview: '' }));
+      return;
+    }
+    const preview = URL.createObjectURL(f);
+    setForm((prev) => ({ ...prev, fileObj: f, filePreview: preview }));
+  };
+
+  // 공용 업로드 함수 (드롭/버튼 모두 사용)
+  const uploadFile = async (file: File, title: string, category: string, description: string) => {
+    if (!user?.username) {
+      alert('로그인이 필요합니다.');
+      return;
+    }
+    setUploading(true);
+    setError(null);
+    try {
+      await galleryAPI.upload(file, title, category, description, user.username);
+      await loadItems();
       alert('사진이 업로드되었습니다.');
-    }, 2000);
+    } catch (e) {
+      console.error('Upload failed:', e);
+      setError('업로드에 실패했습니다.');
+      alert('업로드에 실패했습니다.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // 드래그 앤 드롭 핸들러
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!dragActive) setDragActive(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (dragActive) setDragActive(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+
+    const files = e.dataTransfer.files;
+    if (!files || files.length === 0) return;
+
+    const file = files[0];
+    // 미리보기 업데이트
+    const preview = URL.createObjectURL(file);
+    setForm((prev) => ({ ...prev, fileObj: file, filePreview: preview }));
+
+    // 제목 비어있으면 파일명으로 자동 지정 (확장자 제거)
+    const autoTitle =
+      form.title.trim() ||
+      (file.name.includes('.') ? file.name.replace(/\.[^/.]+$/, '') : file.name);
+
+    // 곧바로 업로드 (요청사항)
+    await uploadFile(file, autoTitle, form.category, form.description);
+
+    // 미리보기 URL 정리 및 폼 리셋
+    URL.revokeObjectURL(preview);
+    setForm({ title: '', category: form.category, description: '', fileObj: null, filePreview: '' });
+    setIsUploading(false);
+  };
+
+  // 수동 업로드 버튼
+  const handleUploadClick = async () => {
+    if (!form.fileObj) {
+      alert('이미지 파일을 선택하거나 드래그해서 올려주세요.');
+      return;
+    }
+    const title = form.title.trim() || (form.fileObj.name.includes('.') ? form.fileObj.name.replace(/\.[^/.]+$/, '') : form.fileObj.name);
+    await uploadFile(form.fileObj, title, form.category, form.description);
+    if (form.filePreview) URL.revokeObjectURL(form.filePreview);
+    setForm({ title: '', category: '예배', description: '', fileObj: null, filePreview: '' });
+    setIsUploading(false);
   };
 
   return (
@@ -99,41 +198,113 @@ export default function Gallery() {
           </Button>
         </div>
 
-        {/* Upload Modal */}
+        {/* Upload Modal (드래그 앤 드롭 + 버튼 업로드) */}
         {isUploading && (
           <Card className="mb-6 p-4">
             <h3 className="text-lg font-semibold text-gray-800 mb-4">사진 업로드</h3>
-            <div className="space-y-4">
+            {!user && (
+              <div className="p-3 mb-3 rounded-lg bg-yellow-50 text-yellow-700 text-sm">
+                업로드에는 로그인이 필요합니다.
+              </div>
+            )}
+
+            {/* 드래그 앤 드롭 존 */}
+            <div
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              className={`relative w-full rounded-2xl border-2 border-dashed p-6 transition-colors ${
+                dragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 bg-white'
+              }`}
+            >
+              <div className="flex flex-col items-center justify-center text-center space-y-2">
+                <i className="ri-upload-cloud-2-line text-3xl text-gray-400" />
+                <p className="text-sm text-gray-600">
+                  이 박스 위로 이미지를 <span className="font-semibold">드래그 & 드롭</span> 하면
+                  즉시 업로드됩니다.
+                </p>
+                <p className="text-xs text-gray-400">또는</p>
+                <Button
+                  onClick={() => fileInputRef.current?.click()}
+                  variant="secondary"
+                  size="sm"
+                  className="rounded-xl"
+                >
+                  파일 선택
+                </Button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={onPickFile}
+                  className="hidden"
+                />
+              </div>
+            </div>
+
+            {/* 수동 업로드 폼 */}
+            <div className="space-y-4 mt-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">사진 제목</label>
                 <input
                   type="text"
-                  placeholder="사진 제목을 입력하세요"
+                  value={form.title}
+                  onChange={(e) => setForm({ ...form, title: e.target.value })}
+                  placeholder="사진 제목을 입력하세요 (미입력 시 파일명으로 저장)"
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white"
                 />
               </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">카테고리</label>
-                <select className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm pr-8 bg-white">
-                  {categories.slice(1).map(category => (
-                    <option key={category} value={category}>{category}</option>
-                  ))}
-                </select>
-              </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">사진 파일</label>
-                <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center">
-                  <i className="ri-image-add-line text-3xl text-gray-400 mb-2"></i>
-                  <p className="text-gray-600 text-sm">사진을 드래그하거나 클릭하여 업로드하세요</p>
-                  <input type="file" multiple accept="image/*" className="hidden" />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">카테고리</label>
+                  <select
+                    value={form.category}
+                    onChange={(e) => setForm({ ...form, category: e.target.value })}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm pr-8 bg-white"
+                  >
+                    {['예배', '수련회', '봉사활동', '친교', '기타'].map((category) => (
+                      <option key={category} value={category}>
+                        {category}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">선택한 이미지</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      readOnly
+                      value={form.fileObj?.name ?? ''}
+                      placeholder="선택된 파일 없음"
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-gray-50 text-sm"
+                    />
+                    <Button
+                      onClick={() => fileInputRef.current?.click()}
+                      variant="secondary"
+                      size="sm"
+                      className="rounded-xl"
+                    >
+                      찾기
+                    </Button>
+                  </div>
+                  {form.filePreview && (
+                    <img
+                      src={form.filePreview}
+                      alt="preview"
+                      className="mt-3 h-32 w-full object-cover rounded-lg"
+                    />
+                  )}
                 </div>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">설명</label>
                 <textarea
+                  value={form.description}
+                  onChange={(e) => setForm({ ...form, description: e.target.value })}
                   placeholder="사진에 대한 설명을 입력하세요"
                   rows={3}
                   maxLength={500}
@@ -141,11 +312,37 @@ export default function Gallery() {
                 />
               </div>
 
+              {error && (
+                <div className="p-3 rounded-lg bg-red-50 text-red-600 text-sm">
+                  {error}
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3 mt-6">
-                <Button onClick={handleUpload} className="py-3 rounded-xl">
-                  업로드
+                <Button
+                  onClick={handleUploadClick}
+                  className="py-3 rounded-xl"
+                  disabled={uploading || !user}
+                >
+                  {uploading ? (
+                    <span className="inline-flex items-center">
+                      <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                      업로드 중...
+                    </span>
+                  ) : (
+                    '업로드'
+                  )}
                 </Button>
-                <Button onClick={() => setIsUploading(false)} variant="secondary" className="py-3 rounded-xl">
+                <Button
+                  onClick={() => {
+                    setIsUploading(false);
+                    if (form.filePreview) URL.revokeObjectURL(form.filePreview);
+                    setForm({ title: '', category: '예배', description: '', fileObj: null, filePreview: '' });
+                  }}
+                  variant="secondary"
+                  className="py-3 rounded-xl"
+                  disabled={uploading}
+                >
                   취소
                 </Button>
               </div>
@@ -156,7 +353,7 @@ export default function Gallery() {
         {/* Category Filter */}
         <div className="mb-6">
           <div className="flex flex-wrap gap-2">
-            {categories.map(category => (
+            {categories.map((category) => (
               <button
                 key={category}
                 onClick={() => setSelectedCategory(category)}
@@ -174,33 +371,48 @@ export default function Gallery() {
 
         {/* Photo Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {filteredPhotos.map(photo => (
-            <Card key={photo.id} className="overflow-hidden hover:shadow-lg transition-shadow cursor-pointer" onClick={() => setSelectedImage(photo)}>
-              <div className="aspect-w-4 aspect-h-3 mb-3">
-                <img
-                  src={photo.image}
-                  alt={photo.title}
-                  className="w-full h-48 object-cover object-top rounded-t-xl"
-                />
-              </div>
-              <div className="p-3 space-y-2">
-                <div className="flex justify-between items-start">
-                  <h3 className="font-semibold text-gray-800 text-sm line-clamp-1">{photo.title}</h3>
-                  <span className="bg-blue-100 text-blue-600 text-xs px-2 py-1 rounded-full whitespace-nowrap">
-                    {photo.category}
-                  </span>
+          {loading ? (
+            <Card className="p-6 text-center text-gray-500">불러오는 중...</Card>
+          ) : items.length === 0 ? (
+            <Card className="p-6 text-center text-gray-500">등록된 사진이 없습니다.</Card>
+          ) : filtered.length === 0 ? (
+            <Card className="p-6 text-center text-gray-500">해당 카테고리의 사진이 없습니다.</Card>
+          ) : (
+            filtered.map((photo) => (
+              <Card
+                key={photo.id}
+                className="overflow-hidden hover:shadow-lg transition-shadow cursor-pointer"
+                onClick={() => setSelectedImage(photo)}
+              >
+                <div className="mb-3">
+                  <img
+                    src={photo.fileUrl}
+                    alt={photo.title}
+                    className="w-full h-48 object-cover object-center rounded-t-xl"
+                    loading="lazy"
+                  />
                 </div>
-                <p className="text-sm text-gray-600 line-clamp-2">{photo.description}</p>
-                <div className="flex justify-between items-center">
-                  <span className="text-xs text-gray-500">{photo.date}</span>
-                  <div className="flex items-center space-x-1 text-red-500">
-                    <i className="ri-heart-line text-sm"></i>
-                    <span className="text-xs">{photo.likes}</span>
+                <div className="p-3 space-y-2">
+                  <div className="flex justify-between items-start">
+                    <h3 className="font-semibold text-gray-800 text-sm line-clamp-1">{photo.title}</h3>
+                    <span className="bg-blue-100 text-blue-600 text-xs px-2 py-1 rounded-full whitespace-nowrap">
+                      {photo.category}
+                    </span>
+                  </div>
+                  {photo.description && (
+                    <p className="text-sm text-gray-600 line-clamp-2">{photo.description}</p>
+                  )}
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-gray-500">{fmtDate(photo.createdAt)}</span>
+                    <div className="flex items-center space-x-1 text-red-500">
+                      <i className="ri-heart-line text-sm"></i>
+                      <span className="text-xs">{photo.likes ?? 0}</span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </Card>
-          ))}
+              </Card>
+            ))
+          )}
         </div>
 
         {/* Image Modal */}
@@ -211,24 +423,26 @@ export default function Gallery() {
                 <div className="flex justify-between items-start mb-4">
                   <div>
                     <h3 className="text-lg font-bold text-gray-800">{selectedImage.title}</h3>
-                    <p className="text-gray-600 text-sm">{selectedImage.date}</p>
+                    <p className="text-gray-600 text-sm">{fmtDate(selectedImage.createdAt)}</p>
                   </div>
-                  <button
+                <button
                     onClick={() => setSelectedImage(null)}
                     className="text-gray-400 hover:text-gray-600 cursor-pointer"
                   >
                     <i className="ri-close-line text-2xl"></i>
                   </button>
                 </div>
-                
+
                 <img
-                  src={selectedImage.image}
+                  src={selectedImage.fileUrl}
                   alt={selectedImage.title}
-                  className="w-full max-h-64 object-cover object-top rounded-xl mb-4"
+                  className="w-full max-h-64 object-cover object-center rounded-xl mb-4"
                 />
-                
-                <p className="text-gray-700 mb-4 text-sm">{selectedImage.description}</p>
-                
+
+                {selectedImage.description && (
+                  <p className="text-gray-700 mb-4 text-sm">{selectedImage.description}</p>
+                )}
+
                 <div className="flex justify-between items-center">
                   <span className="bg-blue-100 text-blue-600 text-sm px-3 py-1 rounded-full">
                     {selectedImage.category}
@@ -236,17 +450,27 @@ export default function Gallery() {
                   <div className="flex items-center space-x-4">
                     <button className="flex items-center space-x-1 text-red-500 hover:text-red-600 cursor-pointer">
                       <i className="ri-heart-line"></i>
-                      <span className="text-sm">{selectedImage.likes}</span>
+                      <span className="text-sm">{selectedImage.likes ?? 0}</span>
                     </button>
-                    <button className="flex items-center space-x-1 text-blue-500 hover:text-blue-600 cursor-pointer">
-                      <i className="ri-share-line"></i>
-                      <span className="text-sm">공유</span>
-                    </button>
+                    <a
+                      className="flex items-center space-x-1 text-blue-500 hover:text-blue-600 cursor-pointer"
+                      href={selectedImage.fileUrl}
+                      download
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <i className="ri-download-line"></i>
+                      <span className="text-sm">다운로드</span>
+                    </a>
                   </div>
                 </div>
               </div>
             </div>
           </div>
+        )}
+
+        {error && !isUploading && (
+          <div className="mt-4 p-3 rounded-lg bg-red-50 text-red-600 text-sm">{error}</div>
         )}
       </div>
     </div>

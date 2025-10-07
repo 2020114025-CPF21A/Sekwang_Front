@@ -1,34 +1,66 @@
-
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Card from '../../components/base/Card';
 import Button from '../../components/base/Button';
 import { qtAPI } from '../../utils/api';
 
+type QtItem = {
+  id: number;
+  username?: string;
+  qtDate: string;                 // 'YYYY-MM-DD'
+  scriptureRef: string;
+  meditation: string;
+  prayerTopic?: string;
+  likes?: number;
+  shared?: boolean;
+  createdAt?: string;
+};
+
 export default function QT() {
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  // 로컬(한국시간) 기준 YYYY-MM-DD
+  const formatLocalYmd = (d: Date) => {
+    const yyyy = d.getFullYear();
+    const mm = `${d.getMonth() + 1}`.padStart(2, '0');
+    const dd = `${d.getDate()}`.padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  };
+
+  const todayYmd = useMemo(() => formatLocalYmd(new Date()), []);
+  const [selectedDate, setSelectedDate] = useState(todayYmd);
+
   const [verse, setVerse] = useState('');
   const [reflection, setReflection] = useState('');
   const [prayer, setPrayer] = useState('');
   const [isSubmitted, setIsSubmitted] = useState(false);
-  const [user, setUser] = useState<any>(null);
-  const [qtHistory, setQtHistory] = useState<any[]>([]);
+
+  const [user, setUser] = useState<{ username: string } | null>(null);
+  const [qtHistory, setQtHistory] = useState<QtItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     const userData = localStorage.getItem('user');
-    if (userData) {
-      const parsedUser = JSON.parse(userData);
-      setUser(parsedUser);
-      loadQTHistory(parsedUser.username);
+    if (!userData) return;
+    try {
+      const parsed = JSON.parse(userData);
+      setUser(parsed);
+      loadQTHistory(parsed.username);
+    } catch {
+      localStorage.removeItem('user');
     }
   }, []);
 
   const loadQTHistory = async (username: string) => {
     try {
       const history = await qtAPI.getUserQTs(username);
-      setQtHistory(history || []);
-    } catch (error) {
-      console.error('Failed to load QT history:', error);
+      const list: QtItem[] = Array.isArray(history) ? history : [];
+      // 날짜 최신순 정렬 (qtDate/createdAt 둘 다 대비)
+      list.sort((a, b) => {
+        const ad = new Date(a.createdAt || a.qtDate).getTime();
+        const bd = new Date(b.createdAt || b.qtDate).getTime();
+        return bd - ad;
+      });
+      setQtHistory(list);
+    } catch (e) {
+      console.error('Failed to load QT history:', e);
     }
   };
 
@@ -37,45 +69,51 @@ export default function QT() {
       alert('로그인이 필요합니다.');
       return;
     }
-
-    if (verse && reflection && prayer) {
-      setIsLoading(true);
-      try {
-        await qtAPI.create(user.username, selectedDate, verse, reflection, prayer);
-        setIsSubmitted(true);
-        setVerse('');
-        setReflection('');
-        setPrayer('');
-        loadQTHistory(user.username);
-      } catch (error) {
-        console.error('Failed to create QT:', error);
-        alert('큐티 작성에 실패했습니다.');
-      } finally {
-        setIsLoading(false);
-      }
-    } else {
+    if (!verse || !reflection || !prayer) {
       alert('모든 항목을 작성해주세요.');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      await qtAPI.create(user.username, selectedDate, verse, reflection, prayer);
+      setIsSubmitted(true);
+      setVerse('');
+      setReflection('');
+      setPrayer('');
+      await loadQTHistory(user.username);
+    } catch (e) {
+      console.error('Failed to create QT:', e);
+      alert('큐티 작성에 실패했습니다.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const handleLike = async (qtId: number) => {
+    if (!user) {
+      alert('로그인이 필요합니다.');
+      return;
+    }
     try {
       await qtAPI.like(qtId);
-      loadQTHistory(user.username);
-    } catch (error) {
-      console.error('Failed to like QT:', error);
+      await loadQTHistory(user.username);
+    } catch (e) {
+      console.error('Failed to like QT:', e);
+      alert('좋아요 처리에 실패했습니다.');
     }
   };
 
-  const thisMonth = new Date().getMonth() + 1;
-  const thisYear = new Date().getFullYear();
-  
-  const thisMonthQTs = qtHistory.filter(qt => {
-    const qtDate = new Date(qt.qtDate);
-    return qtDate.getMonth() + 1 === thisMonth && qtDate.getFullYear() === thisYear;
+  const now = new Date();
+  const thisMonth = now.getMonth() + 1;
+  const thisYear = now.getFullYear();
+
+  const thisMonthQTs = qtHistory.filter((qt) => {
+    const d = new Date(qt.qtDate);
+    return d.getMonth() + 1 === thisMonth && d.getFullYear() === thisYear;
   });
 
-  const sharedQTs = qtHistory.filter(qt => qt.shared).slice(0, 2);
+  const sharedQTs = qtHistory.filter((qt) => qt.shared).slice(0, 2);
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20 sm:pb-4">
@@ -149,8 +187,8 @@ export default function QT() {
               </div>
 
               <div className="grid grid-cols-1 gap-3 mt-6">
-                <Button 
-                  onClick={handleSubmit} 
+                <Button
+                  onClick={handleSubmit}
                   className="w-full py-3 bg-purple-600 hover:bg-purple-700 rounded-xl"
                   disabled={isLoading}
                 >
@@ -192,17 +230,19 @@ export default function QT() {
             <p className="text-2xl font-bold text-purple-600">{thisMonthQTs.length}일</p>
             <p className="text-sm text-gray-600">이번 달 큐티</p>
           </div>
-          
+
           <div className="border-t border-gray-200 pt-4 mb-4">
             <div className="flex justify-between items-center mb-2">
               <span className="text-sm text-gray-600">이번 주 진행률</span>
-              <span className="text-sm font-semibold text-purple-600">{Math.min(thisMonthQTs.length, 7)}/7일</span>
+              <span className="text-sm font-semibold text-purple-600">
+                {Math.min(thisMonthQTs.length, 7)}/7일
+              </span>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-2">
-              <div 
-                className="bg-purple-600 h-2 rounded-full" 
+              <div
+                className="bg-purple-600 h-2 rounded-full"
                 style={{ width: `${Math.min((thisMonthQTs.length / 7) * 100, 100)}%` }}
-              ></div>
+              />
             </div>
           </div>
 
@@ -223,8 +263,8 @@ export default function QT() {
           <h3 className="text-lg font-semibold text-gray-800 mb-4">나의 큐티 기록</h3>
           <div className="space-y-3">
             {qtHistory.length > 0 ? (
-              qtHistory.slice(0, 3).map((qt, index) => (
-                <div key={index} className="p-3 bg-gray-50 rounded-xl">
+              qtHistory.slice(0, 3).map((qt) => (
+                <div key={qt.id} className="p-3 bg-gray-50 rounded-xl">
                   <div className="flex justify-between items-start mb-2">
                     <span className="text-sm font-medium text-gray-800">{qt.scriptureRef}</span>
                     {qt.shared && <i className="ri-share-line text-purple-500 text-sm"></i>}
@@ -254,8 +294,8 @@ export default function QT() {
           <h3 className="text-lg font-semibold text-gray-800 mb-4">함께 나누는 큐티</h3>
           <div className="space-y-4">
             {sharedQTs.length > 0 ? (
-              sharedQTs.map((qt, index) => (
-                <div key={index} className="p-4 border border-gray-200 rounded-xl hover:shadow-md transition-shadow">
+              sharedQTs.map((qt) => (
+                <div key={qt.id} className="p-4 border border-gray-200 rounded-xl hover:shadow-md transition-shadow">
                   <div className="flex justify-between items-start mb-3">
                     <div>
                       <h4 className="font-semibold text-gray-800 text-sm">{qt.scriptureRef}</h4>
@@ -268,12 +308,12 @@ export default function QT() {
                       className="flex items-center space-x-1 text-red-500 hover:text-red-600"
                     >
                       <i className="ri-heart-line text-sm"></i>
-                      <span className="text-xs">{qt.likes || 0}</span>
+                      <span className="text-xs">{qt.likes ?? 0}</span>
                     </button>
                   </div>
                   <p className="text-sm text-gray-600 mb-3 line-clamp-2">{qt.meditation}</p>
                   <div className="flex justify-between items-center">
-                    <span className="text-xs text-gray-500">by {qt.username}</span>
+                    <span className="text-xs text-gray-500">by {qt.username ?? ''}</span>
                     <span className="text-xs text-gray-500">
                       {new Date(qt.createdAt || qt.qtDate).toLocaleDateString('ko-KR')}
                     </span>
