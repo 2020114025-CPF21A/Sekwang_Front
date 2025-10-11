@@ -60,9 +60,13 @@ export default function Login() {
       <div className="w-full max-w-sm">
         {/* Logo Section */}
         <div className="text-center mb-8">
-          <div className="w-20 h-20 bg-blue-600 rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg">
-            <i className="ri-church-line text-3xl text-white"></i>
-          </div>
+          <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg">
+          <img
+            src="/SekwangLogo.png"
+            alt="Sekwang Logo"
+            className="w-12 h-12 object-contain"
+          />
+        </div>
           <h1 className="text-2xl font-bold text-gray-800 mb-2" style={{ fontFamily: '"Pacifico", serif' }}>
             청소년부 행정
           </h1>
