@@ -3,7 +3,7 @@
 // ===== 기본 설정 =====
 const API_BASE =
   (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_API_BASE_URL) ||
-  'https://skchyouth.kr:8080'; // 43.200.61.18
+  'https://skchyouth.kr';
 const BASE_URL = `${API_BASE}/api`;
 
 // ===== 로컬 상태 관리 =====
