@@ -1,21 +1,23 @@
+// vite.config.ts
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react-swc'
 import { resolve } from 'node:path'
 import AutoImport from 'unplugin-auto-import/vite'
 
 const base = process.env.BASE_PATH || '/'
-const isPreview = process.env.IS_PREVIEW  ? true : false;
-// https://vite.dev/config/
+const isPreview = process.env.IS_PREVIEW ? true : false
+
 export default defineConfig({
   define: {
-   __BASE_PATH__: JSON.stringify(base),
-   __IS_PREVIEW__: JSON.stringify(isPreview)
+    __BASE_PATH__: JSON.stringify(base),
+    __IS_PREVIEW__: JSON.stringify(isPreview),
   },
-  plugins: [react(),
+  plugins: [
+    react(),
     AutoImport({
       imports: [
         {
-          'react': [
+          react: [
             'React',
             'useState',
             'useEffect',
@@ -39,8 +41,8 @@ export default defineConfig({
             'createContext',
             'createElement',
             'cloneElement',
-            'isValidElement'
-          ]
+            'isValidElement',
+          ],
         },
         {
           'react-router-dom': [
@@ -51,16 +53,12 @@ export default defineConfig({
             'Link',
             'NavLink',
             'Navigate',
-            'Outlet'
-          ]
+            'Outlet',
+          ],
         },
-        // React i18n
         {
-          'react-i18next': [
-            'useTranslation',
-            'Trans'
-          ]
-        }
+          'react-i18next': ['useTranslation', 'Trans'],
+        },
       ],
       dts: true,
     }),
@@ -72,11 +70,32 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@': resolve(__dirname, './src')
-    }
+      '@': resolve(__dirname, './src'),
+    },
   },
   server: {
+    host: true,              // 0.0.0.0 바인딩
     port: 3000,
-    host: '0.0.0.0',
-  }
+    cors: true,
+    // 🔐 여기 추가: 허용할 호스트들
+    allowedHosts: [
+      'skchyouth.kr',
+      'www.skchyouth.kr',
+      // 필요하면 퍼블릭 IP도 허용
+      '43.200.61.18',
+      // 로컬/도메인 변형 추가 가능
+      'localhost',
+    ],
+  },
+  // vite preview 사용 시에도 동일 정책 적용
+  preview: {
+    host: true,
+    port: 3000,
+    allowedHosts: [
+      'skchyouth.kr',
+      'www.skchyouth.kr',
+      '43.200.61.18',
+      'localhost',
+    ],
+  },
 })
