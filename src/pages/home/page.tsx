@@ -111,27 +111,49 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-gray-50 pb-20 sm:pb-4">
       {/* 상단 인사 섹션 */}
-      <div className="bg-gradient-to-br from-blue-600 to-purple-600 text-white">
-        <div className="px-4 py-8 text-center">
-          <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4">
-            <i className="ri-church-line text-2xl"></i>
-          </div>
-          <h1 className="text-2xl font-bold mb-2" style={{ fontFamily: '"Pacifico", serif' }}>
-            청소년부 행정시스템
-          </h1>
-          <p className="text-blue-100 mb-4">
-            {currentTime.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })}
-          </p>
-          <div className="bg-white/10 rounded-lg p-3 inline-block">
-            <p className="text-sm">
-              안녕하세요, <span className="font-semibold">{user.displayName}</span>님!
-            </p>
-            <p className="text-xs text-blue-200 mt-1">
-              {user.role === 'ADMIN' ? '관리자' : user.role === 'LEADER' ? '리더' : '멤버'}
-            </p>
-          </div>
-        </div>
-      </div>
+      <div
+  className="text-white bg-cover bg-center"
+  style={{
+    backgroundImage: `url("/background.jpeg")`,
+  }}
+>
+  <div className="px-4 py-8 text-center bg-black/30">
+  <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 bg-white/20">
+  <img
+    src="/SekwangLogo.png"
+    alt="새광교회 로고"
+    className="w-10 h-10 object-contain"
+  />
+</div>
+    <h1
+      className="text-2xl font-bold mb-2"
+      style={{ fontFamily: '"Pacifico", serif' }}
+    >
+      청소년부 행정시스템
+    </h1>
+    <p className="text-blue-100 mb-4">
+      {currentTime.toLocaleDateString('ko-KR', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        weekday: 'long',
+      })}
+    </p>
+    <div className="bg-white/10 rounded-lg p-3 inline-block">
+      <p className="text-sm">
+        안녕하세요, <span className="font-semibold">{user.displayName}</span>님!
+      </p>
+      <p className="text-xs text-blue-200 mt-1">
+        {user.role === 'ADMIN'
+          ? '관리자'
+          : user.role === 'LEADER'
+          ? '리더'
+          : '멤버'}
+      </p>
+    </div>
+  </div>
+</div>
+
 
       <div className="px-4 -mt-4">
         {/* 빠른 실행 */}
