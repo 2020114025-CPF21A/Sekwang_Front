@@ -27,7 +27,8 @@ export default function Attendance() {
   const [isLoading, setIsLoading] = useState(false);
 
   // --- 관리자용: QR 세션 정보 & 남은 시간 ---
-  const [qrInfo, setQrInfo] = useState<{ code: string; expiresAt: string } | null>(null);
+  // expiresAt은 서버가 초/밀리초/ISO 등 다양한 형식으로 줄 수 있어 number|string 허용
+  const [qrInfo, setQrInfo] = useState<{ code: string; expiresAt: number | string } | null>(null);
   const [qrRemainSec, setQrRemainSec] = useState(0);
 
   // --- 유틸: 로컬(한국시간) 기준 YYYY-MM-DD ---
@@ -92,25 +93,60 @@ export default function Attendance() {
     return bag.has('ADMIN') || bag.has('ROLE_ADMIN');
   }, [user]);
 
+  // --- expiresAt 안전 파서: 초/밀리초/ISO 문자열 모두 ms로 변환 ---
+  const parseToMs = (v: number | string | undefined | null) => {
+    if (v == null) return NaN;
+    if (typeof v === 'number') {
+      return v < 1e12 ? v * 1000 : v; // 10^12 미만이면 초, 이상이면 ms
+    }
+    const asNum = Number(v);
+    if (!Number.isNaN(asNum)) return asNum < 1e12 ? asNum * 1000 : asNum;
+    const parsed = Date.parse(v); // ISO 문자열 등
+    return Number.isNaN(parsed) ? NaN : parsed;
+  };
+
   // --- QR 카운트다운 ---
   useEffect(() => {
     if (!qrInfo) return;
-    const end = new Date(qrInfo.expiresAt).getTime();
-    const timer = setInterval(() => {
-      const remain = Math.max(0, Math.floor((end - Date.now()) / 1000));
-      setQrRemainSec(remain);
+
+    const endMs = parseToMs(qrInfo.expiresAt);
+    if (Number.isNaN(endMs)) {
+      console.warn('Invalid expiresAt:', qrInfo.expiresAt);
+      setQrInfo(null);
+      return;
+    }
+
+    const tick = () => {
+      const remain = Math.floor((endMs - Date.now()) / 1000);
+      setQrRemainSec(remain > 0 ? remain : 0);
       if (remain <= 0) setQrInfo(null);
-    }, 250);
+    };
+
+    tick(); // 즉시 1회 갱신
+    const timer = setInterval(tick, 250);
     return () => clearInterval(timer);
   }, [qrInfo]);
+
+  // --- 생성 응답 정규화(권장): ttlSec만 있을 때도 처리
+  const normalizeQrResponse = (res: any) => {
+    const expiresAt =
+      res?.expiresAt != null
+        ? res.expiresAt
+        : Date.now() + ((res?.ttlSec ?? 600) * 1000); // 기본 10분
+    return {
+      code: String(res?.code ?? ''),
+      expiresAt,
+    } as { code: string; expiresAt: number | string };
+  };
 
   // --- 관리자: QR 생성 ---
   const handleGenerateQr = async () => {
     if (!user) { alert('로그인이 필요합니다.'); return; }
     setIsLoading(true);
     try {
-      const res = await attendanceAPI.generateQr();
-      setQrInfo(res); // 서버가 10분 유효(expiresAt) 제공
+      const res = await attendanceAPI.generateQr(); // { code, expiresAt } 또는 { code, ttlSec }
+      const normalized = normalizeQrResponse(res);
+      setQrInfo(normalized);
     } catch (e: any) {
       console.error(e);
       alert(e?.message ?? 'QR 생성에 실패했습니다.');
@@ -181,7 +217,6 @@ export default function Attendance() {
   };
 
   const getStatusColor = (status: string) => {
-    // 🔧 여기에서 문법 오류가 났었음: switch (status: string) ❌
     switch (status) {
       case 'PRESENT': return 'bg-green-100 text-green-700';
       case 'LATE': return 'bg-yellow-100 text-yellow-700';
