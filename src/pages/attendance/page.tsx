@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import Card from '../../components/base/Card';
 import Button from '../../components/base/Button';
 import { attendanceAPI } from '../../utils/api';
@@ -22,12 +22,22 @@ export default function Attendance() {
   const [attendanceCode, setAttendanceCode] = useState('');
   const [isCheckedIn, setIsCheckedIn] = useState(false);
   const [showQRScanner, setShowQRScanner] = useState(false);
+  const [scannerActive, setScannerActive] = useState(false);
+
   const [user, setUser] = useState<LocalUser | null>(null);
   const [attendanceHistory, setAttendanceHistory] = useState<AttendanceRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  // --- 관리자용: QR 세션 정보 (만료 여부를 보지 않도록 expiresAt은 보관/표시하지 않음) ---
+  // --- 관리자용: QR 세션 정보 (만료 여부 무시, 그대로 표시만) ---
   const [qrInfo, setQrInfo] = useState<{ code: string } | null>(null);
+
+  // --- QR 카메라/디코딩 관련 ---
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const detectorRef = useRef<any>(null);
+  const [detectorSupported, setDetectorSupported] = useState<boolean | null>(null);
+  const [scannerMsg, setScannerMsg] = useState<string>('');
 
   // --- 유틸: 로컬(한국시간) 기준 YYYY-MM-DD ---
   const formatLocalYmd = (d: Date) => {
@@ -91,11 +101,9 @@ export default function Attendance() {
     return bag.has('ADMIN') || bag.has('ROLE_ADMIN');
   }, [user]);
 
-  // --- 생성 응답 정규화: expiresAt/ttlSec을 무시하고 code만 사용 ---
+  // --- QR 생성 응답 정규화: code만 사용 ---
   const normalizeQrResponse = (res: any) => {
-    return {
-      code: String(res?.code ?? ''),
-    } as { code: string };
+    return { code: String(res?.code ?? '') } as { code: string };
   };
 
   // --- 관리자: QR 생성 ---
@@ -103,9 +111,9 @@ export default function Attendance() {
     if (!user) { alert('로그인이 필요합니다.'); return; }
     setIsLoading(true);
     try {
-      const res = await attendanceAPI.generateQr(); // { code, ... } 응답
+      const res = await attendanceAPI.generateQr(); // { code, ... }
       const normalized = normalizeQrResponse(res);
-      setQrInfo(normalized); // 생성된 QR은 계속 화면에 유지
+      setQrInfo(normalized); // 화면에 계속 유지
     } catch (e: any) {
       console.error(e);
       alert(e?.message ?? 'QR 생성에 실패했습니다.');
@@ -142,28 +150,123 @@ export default function Attendance() {
     }
   };
 
-  // --- QR 스캔 시뮬레이션 ---
-  const handleQRScan = async () => {
+  // --- 스캐너 시작/종료 ---
+  const startScanner = async () => {
     if (!user) { alert('로그인이 필요합니다.'); return; }
     if (isCheckedIn) { alert('오늘은 이미 출석했습니다.'); return; }
-    if (!qrInfo) { alert('현재 화면에 표시된 QR 코드가 없습니다.'); return; }
 
-    setIsLoading(true);
-    setTimeout(async () => {
-      try {
-        const res = await attendanceAPI.checkIn(qrInfo.code);
-        if (!res.ok) throw new Error(res.message || '출석 실패');
-        setIsCheckedIn(true);
-        setShowQRScanner(false);
-        await loadAttendanceHistory(user.username);
-        alert('출석이 확인되었습니다.');
-      } catch (error: any) {
-        console.error('Failed to check-in:', error);
-        alert(error?.message ?? '출석 등록에 실패했습니다.');
-      } finally {
-        setIsLoading(false);
+    try {
+      // 지원 여부 확인
+      const supported = 'BarcodeDetector' in window;
+      setDetectorSupported(supported);
+
+      if (supported) {
+        // @ts-ignore
+        const formats = await (window as any).BarcodeDetector.getSupportedFormats?.().catch(() => []);
+        // @ts-ignore
+        detectorRef.current = new (window as any).BarcodeDetector({
+          formats: (formats && formats.length ? formats : ['qr_code'])
+        });
+      } else {
+        setScannerMsg('이 브라우저는 BarcodeDetector를 지원하지 않습니다. 코드 입력을 사용하세요.');
       }
-    }, 800);
+
+      // 카메라 열기
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } },
+        audio: false
+      });
+      streamRef.current = stream;
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+
+      setScannerActive(true);
+      setScannerMsg('');
+
+      // 디코딩 루프 시작
+      decodeLoop();
+    } catch (err: any) {
+      console.error(err);
+      alert(err?.message ?? '카메라를 열 수 없습니다. 브라우저 권한을 확인하세요.');
+      stopScanner();
+    }
+  };
+
+  const stopScanner = () => {
+    setScannerActive(false);
+
+    if (rafRef.current != null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+
+    if (videoRef.current) {
+      videoRef.current.pause();
+      videoRef.current.srcObject = null;
+    }
+
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    // 스캐너 영역 닫히면 정리
+    if (!showQRScanner) {
+      stopScanner();
+    }
+    // 언마운트 시 정리
+    return () => stopScanner();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showQRScanner]);
+
+  // --- 디코딩 루프 ---
+  const decodeLoop = async () => {
+    if (!scannerActive) return;
+
+    try {
+      if (detectorRef.current && videoRef.current) {
+        const detections = await detectorRef.current.detect(videoRef.current);
+        if (Array.isArray(detections) && detections.length > 0) {
+          const candidate = detections.find((d: any) => d?.rawValue);
+          const text = candidate?.rawValue || detections[0]?.rawValue;
+          if (text) {
+            await handleScanResult(text);
+            return; // 일단 성공 시 루프 종료(필요 시 유지 스캔하도록 변경 가능)
+          }
+        }
+      }
+    } catch (e) {
+      // 탐지 실패는 조용히 무시하고 다음 프레임
+    }
+
+    rafRef.current = requestAnimationFrame(decodeLoop);
+  };
+
+  const handleScanResult = async (text: string) => {
+    // 스캔 성공 시 즉시 종료해서 중복 체크인 방지
+    stopScanner();
+    if (!user) { alert('로그인이 필요합니다.'); return; }
+    if (isCheckedIn) { alert('오늘은 이미 출석했습니다.'); return; }
+
+    try {
+      setIsLoading(true);
+      const res = await attendanceAPI.checkIn(text.trim());
+      if (!res.ok) throw new Error(res.message || '출석 실패');
+      setIsCheckedIn(true);
+      await loadAttendanceHistory(user.username);
+      alert('QR 스캔 성공! 출석이 확인되었습니다.');
+      setShowQRScanner(false);
+    } catch (error: any) {
+      console.error('Failed to check-in via QR:', error);
+      alert(error?.message ?? '출석 등록에 실패했습니다.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const getStatusText = (status: string) => {
@@ -317,45 +420,63 @@ export default function Attendance() {
           <Card className="mb-6 p-6">
             <h2 className="text-lg font-semibold text-gray-800 mb-4 text-center">출석 방법을 선택하세요</h2>
             
-            {/* QR Code Scanner (데모) */}
+            {/* QR Code Scanner */}
             <div className="mb-6">
-              <Button
-                onClick={() => setShowQRScanner(!showQRScanner)}
-                className="w-full py-4 rounded-xl"
-                variant={showQRScanner ? 'secondary' : 'primary'}
-                disabled={isLoading}
-              >
-                <i className="ri-qr-scan-line mr-2 text-xl"></i>
-                QR 코드 스캔
-              </Button>
-              
-              {showQRScanner && (
-                <div className="mt-4 p-6 bg-gray-100 rounded-xl text-center">
-                  <div className="w-48 h-48 bg-white border-4 border-dashed border-gray-300 rounded-lg flex items-center justify-center mx-auto mb-4">
-                    <div className="text-center">
-                      <i className="ri-qr-scan-2-line text-4xl text-gray-400 mb-2"></i>
-                      <p className="text-sm text-gray-600">QR 코드를 스캔하세요</p>
-                    </div>
-                  </div>
-                  {/* 스캔 시작 버튼: 항상 활성화 (disabled 제거) */}
-                  <Button 
-                    onClick={handleQRScan} 
-                    variant="success" 
-                    className="rounded-xl"
-                  >
-                    {isLoading ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                        처리 중...
-                      </>
-                    ) : (
-                      <>
-                        <i className="ri-camera-line mr-2"></i>
-                        스캔 시작
-                      </>
-                    )}
+              <div className="flex gap-3">
+                <Button
+                  onClick={() => {
+                    setShowQRScanner((prev) => {
+                      const next = !prev;
+                      if (next) startScanner(); else stopScanner();
+                      return next;
+                    });
+                  }}
+                  className="w-full py-4 rounded-xl"
+                  variant={showQRScanner ? 'secondary' : 'primary'}
+                >
+                  <i className="ri-qr-scan-line mr-2 text-xl"></i>
+                  {showQRScanner ? '스캔 닫기' : '스캐너 열기'}
+                </Button>
+
+                {showQRScanner && !scannerActive && (
+                  <Button onClick={startScanner} className="py-4 rounded-xl" variant="success">
+                    <i className="ri-camera-line mr-2"></i>
+                    스캔 시작
                   </Button>
-                  {!qrInfo && <p className="mt-2 text-xs text-red-500">현재 화면에 표시된 QR이 없습니다. (관리자가 생성해야 합니다)</p>}
+                )}
+
+                {scannerActive && (
+                  <Button onClick={stopScanner} className="py-4 rounded-xl" variant="danger">
+                    <i className="ri-stop-circle-line mr-2"></i>
+                    스캔 종료
+                  </Button>
+                )}
+              </div>
+
+              {showQRScanner && (
+                <div className="mt-4 p-4 bg-gray-100 rounded-xl">
+                  <div className="relative w-full max-w-sm mx-auto aspect-[3/4] bg-black rounded-lg overflow-hidden">
+                    {/* 비디오 프리뷰 */}
+                    <video
+                      ref={videoRef}
+                      className="absolute inset-0 w-full h-full object-cover"
+                      playsInline
+                      muted
+                    />
+                    {/* 가이드 라인 */}
+                    <div className="absolute inset-0 border-2 border-white/30 rounded-lg pointer-events-none" />
+                  </div>
+                  <div className="mt-2 text-xs text-gray-600 text-center">
+                    카메라 권한을 허용하고, QR을 사각형 안에 맞춰주세요.
+                  </div>
+                  {detectorSupported === false && (
+                    <div className="mt-2 text-xs text-red-500 text-center">
+                      이 브라우저는 QR 자동 인식을 지원하지 않습니다. 아래 “코드 입력”을 사용해주세요.
+                    </div>
+                  )}
+                  {scannerMsg && (
+                    <div className="mt-2 text-xs text-amber-600 text-center">{scannerMsg}</div>
+                  )}
                 </div>
               )}
             </div>
@@ -374,7 +495,7 @@ export default function Attendance() {
                   onChange={(e) => setAttendanceCode(e.target.value.toUpperCase())}
                   placeholder="출석 코드를 입력하세요"
                   className="flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-center text-lg font-mono bg-gray-50 focus:bg-white"
-                  maxLength={16}
+                  maxLength={32}
                   disabled={isLoading}
                 />
                 <Button
