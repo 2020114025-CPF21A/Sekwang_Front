@@ -3,6 +3,7 @@ import Card from '../../components/base/Card';
 import Button from '../../components/base/Button';
 import { attendanceAPI } from '../../utils/api';
 import { QRCodeSVG } from 'qrcode.react';
+import jsQR from 'jsqr';
 
 type AttendanceRecord = {
   attendDate: string;        // 'YYYY-MM-DD'
@@ -28,15 +29,15 @@ export default function Attendance() {
   const [user, setUser] = useState<LocalUser | null>(null);
   const [attendanceHistory, setAttendanceHistory] = useState<AttendanceRecord[]>([]);
 
-  // Admin QR 표시 (만료무시)
+  // Admin QR 표시(만료 무시)
   const [qrInfo, setQrInfo] = useState<{ code: string } | null>(null);
 
-  // --- 카메라/디코딩 refs ---
+  // --- jsQR 방식 스캐너 refs ---
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number | null>(null);
-  const detectorRef = useRef<any>(null);
-  const [detectorSupported, setDetectorSupported] = useState<boolean | null>(null);
   const [scannerMsg, setScannerMsg] = useState<string>('');
 
   // --- 유틸 ---
@@ -137,63 +138,108 @@ export default function Attendance() {
     }
   };
 
-  // --- 스캐너 시작/종료 ---
+  // ========= jsQR 스캐너 =========
+  const drawLine = (begin: {x:number; y:number}, end: {x:number; y:number}, color = '#FF0000') => {
+    const ctx = ctxRef.current;
+    if (!ctx) return;
+    ctx.beginPath();
+    ctx.moveTo(begin.x, begin.y);
+    ctx.lineTo(end.x, end.y);
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = color;
+    ctx.stroke();
+  };
+
+  const tick = () => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const ctx = ctxRef.current;
+    if (!video || !canvas || !ctx) {
+      rafRef.current = requestAnimationFrame(tick);
+      return;
+    }
+
+    if (video.readyState === video.HAVE_ENOUGH_DATA) {
+      // 비디오 크기에 맞춰 캔버스 크기 조정
+      if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+      }
+
+      // 프레임 그리기
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      // 픽셀 데이터 추출
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+      // jsQR로 디코딩 (블로그 글과 동일한 핵심 부분)
+      const result = jsQR(imageData.data, imageData.width, imageData.height, {
+        inversionAttempts: 'dontInvert',
+      });
+
+      if (result) {
+        // 감지 박스 표시
+        const loc = result.location;
+        drawLine(loc.topLeftCorner, loc.topRightCorner);
+        drawLine(loc.topRightCorner, loc.bottomRightCorner);
+        drawLine(loc.bottomRightCorner, loc.bottomLeftCorner);
+        drawLine(loc.bottomLeftCorner, loc.topLeftCorner);
+
+        // 성공 처리
+        handleScanResult(result.data);
+        return; // 중복 호출 방지
+      } else {
+        // 계속 스캔
+        setScannerMsg('QR을 프레임 중앙에 맞춰주세요…');
+      }
+    }
+
+    rafRef.current = requestAnimationFrame(tick);
+  };
+
   const startScanner = async () => {
-    if (scannerActive) return; // 중복 방지
+    if (scannerActive) return;
     if (!user) { alert('로그인이 필요합니다.'); return; }
     if (isCheckedIn) { alert('오늘은 이미 출석했습니다.'); return; }
 
     try {
-      const supported = 'BarcodeDetector' in window;
-      setDetectorSupported(supported);
-      if (supported) {
-        // @ts-ignore
-        const formats = await (window as any).BarcodeDetector.getSupportedFormats?.().catch(() => []);
-        // @ts-ignore
-        detectorRef.current = new (window as any).BarcodeDetector({
-          formats: (formats && formats.length ? formats : ['qr_code'])
-        });
-      } else {
-        setScannerMsg('이 브라우저는 BarcodeDetector를 지원하지 않습니다. 코드 입력을 사용하세요.');
-      }
-
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: { ideal: 'environment' },
           width: { ideal: 1280 },
-          height: { ideal: 720 }
+          height: { ideal: 720 },
         },
-        audio: false
+        audio: false,
       });
       streamRef.current = stream;
 
       const video = videoRef.current!;
-      // iOS 재생 이슈 대비 속성 강제
       video.setAttribute('playsinline', 'true');
       // @ts-ignore
       video.setAttribute('webkit-playsinline', 'true');
       video.muted = true;
       video.autoplay = true;
 
-      if (video.srcObject !== stream) {
-        video.srcObject = stream;
-      }
+      video.srcObject = stream;
 
-      // loadedmetadata 후 play() 호출: 재생중단 경고 방지
+      // loadedmetadata 대기 후 play
       await new Promise<void>((resolve) => {
         if (video.readyState >= 1) return resolve();
         const onLoaded = () => { video.removeEventListener('loadedmetadata', onLoaded); resolve(); };
         video.addEventListener('loadedmetadata', onLoaded);
       });
-
       await video.play();
 
+      const canvas = canvasRef.current!;
+      ctxRef.current = canvas.getContext('2d');
+
       setScannerActive(true);
-      setScannerMsg('');
-      scheduleDecode(); // 루프 시작
+      setScannerMsg('스캔 중…');
+
+      rafRef.current = requestAnimationFrame(tick);
     } catch (err: any) {
       console.error(err);
-      alert(err?.message ?? '카메라를 열 수 없습니다. 브라우저 권한/HTTPS를 확인하세요.');
+      alert(err?.message ?? '카메라를 열 수 없습니다. 권한/HTTPS를 확인하세요.');
       stopScanner();
     }
   };
@@ -213,66 +259,16 @@ export default function Attendance() {
       streamRef.current = null;
     }
     setScannerActive(false);
+    setScannerMsg('');
   };
 
   useEffect(() => {
-    // 스캐너 UI 닫힐 때 정리
     if (!showQRScanner) stopScanner();
     return () => stopScanner();
   }, [showQRScanner]);
 
-  // --- 디코딩 루프 (약 180ms 간격) ---
-  let lastDecodeTs = 0;
-  const scheduleDecode = () => {
-    const loop = async (ts: number) => {
-      if (!scannerActive) return;
-      if (ts - lastDecodeTs < 180) {
-        rafRef.current = requestAnimationFrame(loop);
-        return;
-      }
-      lastDecodeTs = ts;
-
-      try {
-        const video = videoRef.current!;
-        let ok = false;
-
-        // 1) ImageBitmap 경로 (권장)
-        if (detectorRef.current && 'createImageBitmap' in window) {
-          // @ts-ignore
-          const bmp = await (window as any).createImageBitmap(video).catch(() => null);
-          if (bmp) {
-            const res = await detectorRef.current.detect(bmp).catch(() => null);
-            // @ts-ignore
-            if (Array.isArray(res) && res.length > 0) {
-              const text = res[0]?.rawValue || '';
-              if (text) { ok = true; await handleScanResult(text); return; }
-            }
-            // @ts-ignore
-            if (bmp.close) bmp.close();
-          }
-        }
-
-        // 2) 비디오 직접 (보조)
-        if (!ok && detectorRef.current) {
-          const res2 = await detectorRef.current.detect(video).catch(() => null);
-          // @ts-ignore
-          if (Array.isArray(res2) && res2.length > 0) {
-            const text = res2[0]?.rawValue || '';
-            if (text) { await handleScanResult(text); return; }
-          }
-        }
-      } catch {
-        // 디텍팅 실패는 무시
-      }
-      rafRef.current = requestAnimationFrame(loop);
-    };
-    rafRef.current = requestAnimationFrame(loop);
-  };
-
   const handleScanResult = async (text: string) => {
-    // 스캔 성공 시 즉시 종료 (중복 방지)
-    stopScanner();
-
+    stopScanner(); // 중복 방지
     if (!user) { alert('로그인이 필요합니다.'); return; }
     if (isCheckedIn) { alert('오늘은 이미 출석했습니다.'); return; }
 
@@ -434,7 +430,7 @@ export default function Attendance() {
           <Card className="mb-6 p-6">
             <h2 className="text-lg font-semibold text-gray-800 mb-4 text-center">출석 방법을 선택하세요</h2>
             
-            {/* QR Code Scanner */}
+            {/* QR Code Scanner (jsQR) */}
             <div className="mb-6">
               <div className="flex gap-3">
                 <Button
@@ -464,6 +460,7 @@ export default function Attendance() {
               {showQRScanner && (
                 <div className="mt-4 p-4 bg-gray-100 rounded-xl">
                   <div className="relative w-full max-w-sm mx-auto aspect-[3/4] bg-black rounded-lg overflow-hidden">
+                    {/* 비디오 프리뷰 */}
                     <video
                       ref={videoRef}
                       className="absolute inset-0 w-full h-full object-cover"
@@ -471,16 +468,16 @@ export default function Attendance() {
                       muted
                       autoPlay
                     />
+                    {/* 캔버스 (분석/가이드) */}
+                    <canvas
+                      ref={canvasRef}
+                      className="absolute inset-0 w-full h-full"
+                    />
                     <div className="absolute inset-0 border-2 border-white/30 rounded-lg pointer-events-none" />
                   </div>
                   <div className="mt-2 text-xs text-gray-600 text-center">
                     카메라 권한을 허용하고, QR을 사각형 안에 맞춰주세요.
                   </div>
-                  {detectorSupported === false && (
-                    <div className="mt-2 text-xs text-red-500 text-center">
-                      이 브라우저는 QR 자동 인식을 지원하지 않습니다. 아래 “코드 입력”을 사용해주세요.
-                    </div>
-                  )}
                   {scannerMsg && (
                     <div className="mt-2 text-xs text-amber-600 text-center">{scannerMsg}</div>
                   )}
