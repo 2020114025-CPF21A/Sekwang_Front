@@ -337,11 +337,11 @@ export default function Attendance() {
                       <p className="text-sm text-gray-600">QR 코드를 스캔하세요</p>
                     </div>
                   </div>
+                  {/* 스캔 시작 버튼: 항상 활성화 (disabled 제거) */}
                   <Button 
                     onClick={handleQRScan} 
                     variant="success" 
                     className="rounded-xl"
-                    disabled={isLoading || !qrInfo}
                   >
                     {isLoading ? (
                       <>
