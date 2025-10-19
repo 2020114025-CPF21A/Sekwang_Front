@@ -9,29 +9,29 @@ type AttendanceRecord = {
   status: 'PRESENT' | 'LATE' | 'ABSENT' | string;
 };
 
-// 로그인 응답이 다양한 케이스를 가정
 type LocalUser = {
   username: string;
-  role?: string;                  // "ADMIN" | "LEADER" | ...
-  roles?: string[];               // ["ROLE_ADMIN", ...] 또는 ["ADMIN", ...]
-  authorities?: Array<string | { authority: string }>; // ["ROLE_ADMIN"] | [{authority:"ROLE_ADMIN"}]
+  role?: string;
+  roles?: string[];
+  authorities?: Array<string | { authority: string }>;
   [k: string]: any;
 };
 
 export default function Attendance() {
   const [attendanceCode, setAttendanceCode] = useState('');
   const [isCheckedIn, setIsCheckedIn] = useState(false);
+
   const [showQRScanner, setShowQRScanner] = useState(false);
   const [scannerActive, setScannerActive] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   const [user, setUser] = useState<LocalUser | null>(null);
   const [attendanceHistory, setAttendanceHistory] = useState<AttendanceRecord[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
 
-  // --- 관리자용: QR 세션 정보 (만료 여부 무시, 그대로 표시만) ---
+  // Admin QR 표시 (만료무시)
   const [qrInfo, setQrInfo] = useState<{ code: string } | null>(null);
 
-  // --- QR 카메라/디코딩 관련 ---
+  // --- 카메라/디코딩 refs ---
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -39,18 +39,17 @@ export default function Attendance() {
   const [detectorSupported, setDetectorSupported] = useState<boolean | null>(null);
   const [scannerMsg, setScannerMsg] = useState<string>('');
 
-  // --- 유틸: 로컬(한국시간) 기준 YYYY-MM-DD ---
+  // --- 유틸 ---
   const formatLocalYmd = (d: Date) => {
     const yyyy = d.getFullYear();
     const mm = `${d.getMonth() + 1}`.padStart(2, '0');
     const dd = `${d.getDate()}`.padStart(2, '0');
     return `${yyyy}-${mm}-${dd}`;
   };
-
   const today = useMemo(() => new Date(), []);
   const todayYmd = useMemo(() => formatLocalYmd(today), [today]);
 
-  // --- 로그인 사용자 로드 & 기록 로드 ---
+  // --- 유저/기록 로드 ---
   useEffect(() => {
     const userData = localStorage.getItem('user');
     if (userData) {
@@ -69,7 +68,6 @@ export default function Attendance() {
       const history = await attendanceAPI.getUserAttendance(username);
       const arr: AttendanceRecord[] = Array.isArray(history) ? history : [];
       setAttendanceHistory(arr);
-      // 오늘 출석 여부 갱신
       const already = arr.some((r) => r.attendDate === todayYmd && r.status !== 'ABSENT');
       setIsCheckedIn(already);
     } catch (error) {
@@ -77,10 +75,9 @@ export default function Attendance() {
     }
   };
 
-  // --- 관리자 판별: 다양한 형태(role/roles/authorities) 모두 대응 ---
+  // --- 관리자 판별 ---
   const isAdmin = useMemo(() => {
     if (!user) return false;
-
     const add = (s: Set<string>, val?: string | null) => {
       if (!val) return;
       const up = String(val).toUpperCase();
@@ -88,7 +85,6 @@ export default function Attendance() {
       if (up.startsWith('ROLE_')) s.add(up.replace(/^ROLE_/, ''));
       else s.add(`ROLE_${up}`);
     };
-
     const bag = new Set<string>();
     add(bag, user.role);
     if (Array.isArray(user.roles)) user.roles.forEach((r) => add(bag, String(r)));
@@ -101,19 +97,16 @@ export default function Attendance() {
     return bag.has('ADMIN') || bag.has('ROLE_ADMIN');
   }, [user]);
 
-  // --- QR 생성 응답 정규화: code만 사용 ---
-  const normalizeQrResponse = (res: any) => {
-    return { code: String(res?.code ?? '') } as { code: string };
-  };
+  // --- QR 생성 응답 정규화 ---
+  const normalizeQrResponse = (res: any) => ({ code: String(res?.code ?? '') });
 
   // --- 관리자: QR 생성 ---
   const handleGenerateQr = async () => {
     if (!user) { alert('로그인이 필요합니다.'); return; }
     setIsLoading(true);
     try {
-      const res = await attendanceAPI.generateQr(); // { code, ... }
-      const normalized = normalizeQrResponse(res);
-      setQrInfo(normalized); // 화면에 계속 유지
+      const res = await attendanceAPI.generateQr();
+      setQrInfo(normalizeQrResponse(res));
     } catch (e: any) {
       console.error(e);
       alert(e?.message ?? 'QR 생성에 실패했습니다.');
@@ -122,17 +115,11 @@ export default function Attendance() {
     }
   };
 
-  // --- 코드 제출 → check-in 호출 ---
+  // --- 코드 제출 ---
   const handleCodeSubmit = async () => {
     if (!user) { alert('로그인이 필요합니다.'); return; }
-    if (!attendanceCode.trim()) {
-      alert('출석 코드를 입력하세요.');
-      return;
-    }
-    if (isCheckedIn) {
-      alert('오늘은 이미 출석했습니다.');
-      return;
-    }
+    if (!attendanceCode.trim()) { alert('출석 코드를 입력하세요.'); return; }
+    if (isCheckedIn) { alert('오늘은 이미 출석했습니다.'); return; }
 
     setIsLoading(true);
     try {
@@ -152,14 +139,13 @@ export default function Attendance() {
 
   // --- 스캐너 시작/종료 ---
   const startScanner = async () => {
+    if (scannerActive) return; // 중복 방지
     if (!user) { alert('로그인이 필요합니다.'); return; }
     if (isCheckedIn) { alert('오늘은 이미 출석했습니다.'); return; }
 
     try {
-      // 지원 여부 확인
       const supported = 'BarcodeDetector' in window;
       setDetectorSupported(supported);
-
       if (supported) {
         // @ts-ignore
         const formats = await (window as any).BarcodeDetector.getSupportedFormats?.().catch(() => []);
@@ -171,85 +157,122 @@ export default function Attendance() {
         setScannerMsg('이 브라우저는 BarcodeDetector를 지원하지 않습니다. 코드 입력을 사용하세요.');
       }
 
-      // 카메라 열기
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' } },
+        video: {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        },
         audio: false
       });
       streamRef.current = stream;
 
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
+      const video = videoRef.current!;
+      // iOS 재생 이슈 대비 속성 강제
+      video.setAttribute('playsinline', 'true');
+      // @ts-ignore
+      video.setAttribute('webkit-playsinline', 'true');
+      video.muted = true;
+      video.autoplay = true;
+
+      if (video.srcObject !== stream) {
+        video.srcObject = stream;
       }
+
+      // loadedmetadata 후 play() 호출: 재생중단 경고 방지
+      await new Promise<void>((resolve) => {
+        if (video.readyState >= 1) return resolve();
+        const onLoaded = () => { video.removeEventListener('loadedmetadata', onLoaded); resolve(); };
+        video.addEventListener('loadedmetadata', onLoaded);
+      });
+
+      await video.play();
 
       setScannerActive(true);
       setScannerMsg('');
-
-      // 디코딩 루프 시작
-      decodeLoop();
+      scheduleDecode(); // 루프 시작
     } catch (err: any) {
       console.error(err);
-      alert(err?.message ?? '카메라를 열 수 없습니다. 브라우저 권한을 확인하세요.');
+      alert(err?.message ?? '카메라를 열 수 없습니다. 브라우저 권한/HTTPS를 확인하세요.');
       stopScanner();
     }
   };
 
   const stopScanner = () => {
-    setScannerActive(false);
-
     if (rafRef.current != null) {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
     }
-
-    if (videoRef.current) {
-      videoRef.current.pause();
-      videoRef.current.srcObject = null;
+    const video = videoRef.current;
+    if (video) {
+      try { video.pause(); } catch {}
+      video.srcObject = null;
     }
-
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(t => t.stop());
       streamRef.current = null;
     }
+    setScannerActive(false);
   };
 
   useEffect(() => {
-    // 스캐너 영역 닫히면 정리
-    if (!showQRScanner) {
-      stopScanner();
-    }
-    // 언마운트 시 정리
+    // 스캐너 UI 닫힐 때 정리
+    if (!showQRScanner) stopScanner();
     return () => stopScanner();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showQRScanner]);
 
-  // --- 디코딩 루프 ---
-  const decodeLoop = async () => {
-    if (!scannerActive) return;
+  // --- 디코딩 루프 (약 180ms 간격) ---
+  let lastDecodeTs = 0;
+  const scheduleDecode = () => {
+    const loop = async (ts: number) => {
+      if (!scannerActive) return;
+      if (ts - lastDecodeTs < 180) {
+        rafRef.current = requestAnimationFrame(loop);
+        return;
+      }
+      lastDecodeTs = ts;
 
-    try {
-      if (detectorRef.current && videoRef.current) {
-        const detections = await detectorRef.current.detect(videoRef.current);
-        if (Array.isArray(detections) && detections.length > 0) {
-          const candidate = detections.find((d: any) => d?.rawValue);
-          const text = candidate?.rawValue || detections[0]?.rawValue;
-          if (text) {
-            await handleScanResult(text);
-            return; // 일단 성공 시 루프 종료(필요 시 유지 스캔하도록 변경 가능)
+      try {
+        const video = videoRef.current!;
+        let ok = false;
+
+        // 1) ImageBitmap 경로 (권장)
+        if (detectorRef.current && 'createImageBitmap' in window) {
+          // @ts-ignore
+          const bmp = await (window as any).createImageBitmap(video).catch(() => null);
+          if (bmp) {
+            const res = await detectorRef.current.detect(bmp).catch(() => null);
+            // @ts-ignore
+            if (Array.isArray(res) && res.length > 0) {
+              const text = res[0]?.rawValue || '';
+              if (text) { ok = true; await handleScanResult(text); return; }
+            }
+            // @ts-ignore
+            if (bmp.close) bmp.close();
           }
         }
-      }
-    } catch (e) {
-      // 탐지 실패는 조용히 무시하고 다음 프레임
-    }
 
-    rafRef.current = requestAnimationFrame(decodeLoop);
+        // 2) 비디오 직접 (보조)
+        if (!ok && detectorRef.current) {
+          const res2 = await detectorRef.current.detect(video).catch(() => null);
+          // @ts-ignore
+          if (Array.isArray(res2) && res2.length > 0) {
+            const text = res2[0]?.rawValue || '';
+            if (text) { await handleScanResult(text); return; }
+          }
+        }
+      } catch {
+        // 디텍팅 실패는 무시
+      }
+      rafRef.current = requestAnimationFrame(loop);
+    };
+    rafRef.current = requestAnimationFrame(loop);
   };
 
   const handleScanResult = async (text: string) => {
-    // 스캔 성공 시 즉시 종료해서 중복 체크인 방지
+    // 스캔 성공 시 즉시 종료 (중복 방지)
     stopScanner();
+
     if (!user) { alert('로그인이 필요합니다.'); return; }
     if (isCheckedIn) { alert('오늘은 이미 출석했습니다.'); return; }
 
@@ -277,7 +300,6 @@ export default function Attendance() {
       default: return status;
     }
   };
-
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'PRESENT': return 'bg-green-100 text-green-700';
@@ -286,7 +308,6 @@ export default function Attendance() {
       default: return 'bg-gray-100 text-gray-700';
     }
   };
-
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'PRESENT': return 'ri-check-line text-green-600';
@@ -296,18 +317,14 @@ export default function Attendance() {
     }
   };
 
-  // =========================
   // 지난 4개 일요일 + 다음 일요일
-  // =========================
   const last4SundaysPlusNext = useMemo(() => {
     const t = new Date(today);
-    // "직전" 일요일 (오늘이 일요일이면 7일 전)
     const lastSun = new Date(t);
     const day = t.getDay(); // 0=Sun
     const diffToLast = day === 0 ? 7 : day;
     lastSun.setDate(t.getDate() - diffToLast);
 
-    // 지난 4개 일요일
     const prevs: Date[] = [];
     for (let i = 3; i >= 0; i--) {
       const d = new Date(lastSun);
@@ -315,7 +332,6 @@ export default function Attendance() {
       prevs.push(d);
     }
 
-    // 가까운 다음 일요일 (오늘이 일요일이어도 +7)
     const nextSun = new Date(t);
     const ahead = day === 0 ? 7 : 7 - day;
     nextSun.setDate(t.getDate() + ahead);
@@ -324,19 +340,17 @@ export default function Attendance() {
     return all.map(d => ({ date: d, ymd: formatLocalYmd(d) }));
   }, [today]);
 
-  // =========================
-  // 이번 달 출석률 (분모: 이번 달 모든 일요일)
-  // =========================
+  // 이번 달 출석률
   const monthSundays = useMemo(() => {
     const now = today;
     const y = now.getFullYear();
-    const m = now.getMonth(); // 0~11
+    const m = now.getMonth();
     const first = new Date(y, m, 1);
     const last = new Date(y, m + 1, 0);
     const list: { ymd: string; date: Date }[] = [];
 
     const start = new Date(first);
-    const offsetToSunday = (7 - start.getDay()) % 7; // 첫 일요일까지 이동
+    const offsetToSunday = (7 - start.getDay()) % 7;
     start.setDate(start.getDate() + offsetToSunday);
 
     while (start <= last) {
@@ -424,18 +438,12 @@ export default function Attendance() {
             <div className="mb-6">
               <div className="flex gap-3">
                 <Button
-                  onClick={() => {
-                    setShowQRScanner((prev) => {
-                      const next = !prev;
-                      if (next) startScanner(); else stopScanner();
-                      return next;
-                    });
-                  }}
+                  onClick={() => setShowQRScanner((prev) => !prev)}
                   className="w-full py-4 rounded-xl"
                   variant={showQRScanner ? 'secondary' : 'primary'}
                 >
                   <i className="ri-qr-scan-line mr-2 text-xl"></i>
-                  {showQRScanner ? '스캔 닫기' : '스캐너 열기'}
+                  {showQRScanner ? '스캐너 닫기' : '스캐너 열기'}
                 </Button>
 
                 {showQRScanner && !scannerActive && (
@@ -456,14 +464,13 @@ export default function Attendance() {
               {showQRScanner && (
                 <div className="mt-4 p-4 bg-gray-100 rounded-xl">
                   <div className="relative w-full max-w-sm mx-auto aspect-[3/4] bg-black rounded-lg overflow-hidden">
-                    {/* 비디오 프리뷰 */}
                     <video
                       ref={videoRef}
                       className="absolute inset-0 w-full h-full object-cover"
                       playsInline
                       muted
+                      autoPlay
                     />
-                    {/* 가이드 라인 */}
                     <div className="absolute inset-0 border-2 border-white/30 rounded-lg pointer-events-none" />
                   </div>
                   <div className="mt-2 text-xs text-gray-600 text-center">
@@ -517,12 +524,9 @@ export default function Attendance() {
           </Card>
         )}
 
-        {/* =========================
-             지난 출석 현황 (이전 4개 일요일 + 다음 일요일)
-           ========================= */}
+        {/* 지난 출석 현황 */}
         <Card className="mb-6 p-4">
           <h3 className="text-lg font-semibold text-gray-800 mb-4">지난 출석 현황</h3>
-
           <div className="flex flex-wrap gap-3">
             {last4SundaysPlusNext.map(({ ymd, date }, idx) => {
               const record = attendanceHistory.find((r) => r.attendDate === ymd);
@@ -570,7 +574,7 @@ export default function Attendance() {
           </div>
         </Card>
 
-        {/* Attendance History */}
+        {/* 출석 기록 */}
         <Card className="p-4">
           <h3 className="text-lg font-semibold text-gray-800 mb-4">출석 기록</h3>
           <div className="space-y-3">
