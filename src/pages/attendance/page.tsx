@@ -26,10 +26,8 @@ export default function Attendance() {
   const [attendanceHistory, setAttendanceHistory] = useState<AttendanceRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  // --- 관리자용: QR 세션 정보 & 남은 시간 ---
-  // expiresAt은 서버가 초/밀리초/ISO 등 다양한 형식으로 줄 수 있어 number|string 허용
-  const [qrInfo, setQrInfo] = useState<{ code: string; expiresAt: number | string } | null>(null);
-  const [qrRemainSec, setQrRemainSec] = useState(0);
+  // --- 관리자용: QR 세션 정보 (만료 여부를 보지 않도록 expiresAt은 보관/표시하지 않음) ---
+  const [qrInfo, setQrInfo] = useState<{ code: string } | null>(null);
 
   // --- 유틸: 로컬(한국시간) 기준 YYYY-MM-DD ---
   const formatLocalYmd = (d: Date) => {
@@ -93,50 +91,11 @@ export default function Attendance() {
     return bag.has('ADMIN') || bag.has('ROLE_ADMIN');
   }, [user]);
 
-  // --- expiresAt 안전 파서: 초/밀리초/ISO 문자열 모두 ms로 변환 ---
-  const parseToMs = (v: number | string | undefined | null) => {
-    if (v == null) return NaN;
-    if (typeof v === 'number') {
-      return v < 1e12 ? v * 1000 : v; // 10^12 미만이면 초, 이상이면 ms
-    }
-    const asNum = Number(v);
-    if (!Number.isNaN(asNum)) return asNum < 1e12 ? asNum * 1000 : asNum;
-    const parsed = Date.parse(v); // ISO 문자열 등
-    return Number.isNaN(parsed) ? NaN : parsed;
-  };
-
-  // --- QR 카운트다운 ---
-  useEffect(() => {
-    if (!qrInfo) return;
-
-    const endMs = parseToMs(qrInfo.expiresAt);
-    if (Number.isNaN(endMs)) {
-      console.warn('Invalid expiresAt:', qrInfo.expiresAt);
-      setQrInfo(null);
-      return;
-    }
-
-    const tick = () => {
-      const remain = Math.floor((endMs - Date.now()) / 1000);
-      setQrRemainSec(remain > 0 ? remain : 0);
-      if (remain <= 0) setQrInfo(null);
-    };
-
-    tick(); // 즉시 1회 갱신
-    const timer = setInterval(tick, 250);
-    return () => clearInterval(timer);
-  }, [qrInfo]);
-
-  // --- 생성 응답 정규화(권장): ttlSec만 있을 때도 처리
+  // --- 생성 응답 정규화: expiresAt/ttlSec을 무시하고 code만 사용 ---
   const normalizeQrResponse = (res: any) => {
-    const expiresAt =
-      res?.expiresAt != null
-        ? res.expiresAt
-        : Date.now() + ((res?.ttlSec ?? 600) * 1000); // 기본 10분
     return {
       code: String(res?.code ?? ''),
-      expiresAt,
-    } as { code: string; expiresAt: number | string };
+    } as { code: string };
   };
 
   // --- 관리자: QR 생성 ---
@@ -144,9 +103,9 @@ export default function Attendance() {
     if (!user) { alert('로그인이 필요합니다.'); return; }
     setIsLoading(true);
     try {
-      const res = await attendanceAPI.generateQr(); // { code, expiresAt } 또는 { code, ttlSec }
+      const res = await attendanceAPI.generateQr(); // { code, ... } 응답
       const normalized = normalizeQrResponse(res);
-      setQrInfo(normalized);
+      setQrInfo(normalized); // 생성된 QR은 계속 화면에 유지
     } catch (e: any) {
       console.error(e);
       alert(e?.message ?? 'QR 생성에 실패했습니다.');
@@ -187,7 +146,7 @@ export default function Attendance() {
   const handleQRScan = async () => {
     if (!user) { alert('로그인이 필요합니다.'); return; }
     if (isCheckedIn) { alert('오늘은 이미 출석했습니다.'); return; }
-    if (!qrInfo) { alert('현재 활성화된 QR 코드가 없습니다.'); return; }
+    if (!qrInfo) { alert('현재 화면에 표시된 QR 코드가 없습니다.'); return; }
 
     setIsLoading(true);
     setTimeout(async () => {
@@ -317,7 +276,9 @@ export default function Attendance() {
             <div className="flex items-center justify-between gap-4">
               <div>
                 <h3 className="text-lg font-semibold text-gray-800">QR 코드 생성</h3>
-                <p className="text-sm text-gray-600">생성 후 <b>10분</b> 동안 스캔/코드 입력으로 출석 가능</p>
+                <p className="text-sm text-gray-600">
+                  생성된 QR은 화면에 계속 표시됩니다. (유효성 검사는 서버에서 처리)
+                </p>
               </div>
               <Button onClick={handleGenerateQr} className="rounded-xl" disabled={isLoading}>
                 <i className="ri-qr-code-line mr-2" />
@@ -331,8 +292,7 @@ export default function Attendance() {
                   <QRCodeSVG value={qrInfo.code} size={180} />
                 </div>
                 <div className="mt-2 text-sm text-gray-700 text-center">
-                  코드: <span className="font-mono">{qrInfo.code}</span><br />
-                  남은 시간: <span className="font-semibold">{qrRemainSec}s</span>
+                  코드: <span className="font-mono">{qrInfo.code}</span>
                 </div>
               </div>
             )}
@@ -395,7 +355,7 @@ export default function Attendance() {
                       </>
                     )}
                   </Button>
-                  {!qrInfo && <p className="mt-2 text-xs text-red-500">현재 활성화된 QR이 없습니다. (관리자가 생성해야 합니다)</p>}
+                  {!qrInfo && <p className="mt-2 text-xs text-red-500">현재 화면에 표시된 QR이 없습니다. (관리자가 생성해야 합니다)</p>}
                 </div>
               )}
             </div>
@@ -430,7 +390,7 @@ export default function Attendance() {
                 </Button>
               </div>
               <p className="text-xs text-gray-500 mt-2 text-center">
-                관리자가 생성한 코드(유효 10분)만 인정됩니다
+                유효성/만료 검사는 서버에서 판단합니다.
               </p>
             </div>
           </Card>
