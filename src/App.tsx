@@ -13,7 +13,8 @@ const BASENAME =
 
 function App() {
   useEffect(() => {
-    // 앱 첫 진입 시 세션 검증 → 없으면 /login으로
+    // 앱 첫 진입 시 토큰이 있으면 세션 검증 (선택적)
+    // 실패해도 로그아웃하지 않음 (각 페이지에서 처리)
     ensureLoginGate();
   }, []);
 

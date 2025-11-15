@@ -154,8 +154,8 @@ export default function Home() {
   </div>
 </div>
 
-
-      <div className="px-4 -mt-4">
+      {/* 콘텐츠 중앙 정렬 컨테이너 */}
+      <div className="max-w-5xl mx-auto px-4 -mt-4">
         {/* 빠른 실행 */}
         <Card className="mb-6 p-4">
           <h2 className="text-lg font-semibold text-gray-800 mb-4">빠른 실행</h2>

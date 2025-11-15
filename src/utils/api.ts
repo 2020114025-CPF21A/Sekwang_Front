@@ -3,7 +3,7 @@
 // ===== 기본 설정 =====
 const API_BASE =
   (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_API_BASE_URL) ||
-  'https://skchyouth.kr';
+  (import.meta.env?.MODE === 'development' ? 'http://localhost:8080' : 'https://skchyouth.kr');
 const BASE_URL = `${API_BASE}/api`;
 
 // ===== 로컬 상태 관리 =====
@@ -94,11 +94,26 @@ async function apiRequest(
 // ===== 부팅 시 세션 검증 게이트 =====
 // App.tsx 등에서 최초 한 번 호출: ensureLoginGate()
 export async function ensureLoginGate(): Promise<void> {
+  const token = getToken();
+  const existingUser = getUser();
+  
+  // 토큰이 없으면 검증하지 않음 (로그인 페이지로 유도는 각 페이지에서 처리)
+  if (!token) {
+    return;
+  }
+
+  // 토큰이 있으면 서버에 검증 요청
   try {
     const me = await authAPI.me();     // 성공 → 서버 값으로 user 갱신
     setUser(me);
-  } catch {
-    handleUnauthorized();              // 실패 → /login
+  } catch (error) {
+    // 토큰이 만료되었거나 유효하지 않은 경우에만 로그아웃
+    console.warn('Token validation failed:', error);
+    // 기존 유저 정보가 있으면 유지 (네트워크 오류 대비)
+    if (!existingUser) {
+      removeToken();
+      removeUser();
+    }
   }
 }
 

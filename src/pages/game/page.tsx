@@ -236,7 +236,7 @@ export default function Game() {
   // ===== 진행 화면 =====
   return (
     <div className="min-h-screen bg-gray-50 pb-20 sm:pb-4">
-      <div className="px-4 py-6">
+      <div className="max-w-5xl mx-auto px-4 py-6">
         {/* Header */}
         <div className="flex justify-between items-center mb-6">
           <div>

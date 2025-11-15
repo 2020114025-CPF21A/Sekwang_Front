@@ -121,7 +121,7 @@ export default function Diary() {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20 sm:pb-4">
-      <div className="px-4 py-6">
+      <div className="max-w-5xl mx-auto px-4 py-6">
         {/* Header */}
         <div className="text-center mb-6">
           <div className="w-16 h-16 bg-orange-600 rounded-full flex items-center justify-center mx-auto mb-4">

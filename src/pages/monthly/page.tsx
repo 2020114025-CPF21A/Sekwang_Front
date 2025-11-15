@@ -92,29 +92,8 @@ export default function Monthly() {
       .length;
   };
 
-  // (옵션) 오늘 출석 빠르게 기록 버튼: 필요한 경우 활성화
-  const quickAttendToday = async () => {
-    if (!user) {
-      alert('로그인이 필요합니다.');
-      return;
-    }
-    const yyyy = today.getFullYear();
-    const mm = String(today.getMonth() + 1).padStart(2, '0');
-    const dd = String(today.getDate()).padStart(2, '0');
-    const iso = `${yyyy}-${mm}-${dd}`;
-
-    try {
-      setLoading(true);
-      await attendanceAPI.register(user.username, iso, 'PRESENT');
-      await fetchAttendance(user.username);
-      alert('오늘 출석이 기록되었습니다.');
-    } catch (e) {
-      console.error(e);
-      alert('출석 기록 실패');
-    } finally {
-      setLoading(false);
-    }
-  };
+  // 오늘 출석은 출석체크 페이지에서만 가능하도록 (QR/코드 체크인)
+  // 월간 페이지는 조회 전용
 
   const achievements = [
     { title: '완벽한 한 주', description: '일주일 연속 출석', achieved: getAttendanceRate() >= 25, icon: 'ri-trophy-line', color: 'text-yellow-600' },
@@ -125,7 +104,7 @@ export default function Monthly() {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20 sm:pb-4">
-      <div className="px-4 py-6">
+      <div className="max-w-5xl mx-auto px-4 py-6">
         {/* Header */}
         <div className="text-center mb-6">
           <div className="w-16 h-16 bg-purple-600 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -164,16 +143,6 @@ export default function Monthly() {
           >
             <i className="ri-refresh-line mr-1" />
             새로고침
-          </Button>
-
-          {/* (옵션) 오늘 출석 빠르게 기록 */}
-          <Button
-            className="rounded-xl"
-            onClick={quickAttendToday}
-            disabled={loading || !user}
-          >
-            <i className="ri-check-line mr-1" />
-            오늘 출석 기록
           </Button>
         </div>
 

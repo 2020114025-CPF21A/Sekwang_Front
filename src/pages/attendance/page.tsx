@@ -313,27 +313,26 @@ export default function Attendance() {
     }
   };
 
-  // 지난 4개 일요일 + 다음 일요일
-  const last4SundaysPlusNext = useMemo(() => {
+  // 최근 5개 일요일 (오늘 포함)
+  const recentSundays = useMemo(() => {
     const t = new Date(today);
-    const lastSun = new Date(t);
-    const day = t.getDay(); // 0=Sun
-    const diffToLast = day === 0 ? 7 : day;
-    lastSun.setDate(t.getDate() - diffToLast);
-
-    const prevs: Date[] = [];
-    for (let i = 3; i >= 0; i--) {
-      const d = new Date(lastSun);
-      d.setDate(lastSun.getDate() - 7 * i);
-      prevs.push(d);
+    const day = t.getDay(); // 0=Sun, 1=Mon, ...
+    
+    // 오늘이 일요일이면 오늘, 아니면 가장 최근 지난 일요일
+    const mostRecentSun = new Date(t);
+    if (day !== 0) {
+      mostRecentSun.setDate(t.getDate() - day);
     }
 
-    const nextSun = new Date(t);
-    const ahead = day === 0 ? 7 : 7 - day;
-    nextSun.setDate(t.getDate() + ahead);
+    // 최근 일요일부터 과거로 4개 더 (총 5개)
+    const sundays: Date[] = [];
+    for (let i = 0; i < 5; i++) {
+      const d = new Date(mostRecentSun);
+      d.setDate(mostRecentSun.getDate() - (7 * i));
+      sundays.push(d);
+    }
 
-    const all = [...prevs, nextSun];
-    return all.map(d => ({ date: d, ymd: formatLocalYmd(d) }));
+    return sundays.reverse().map(d => ({ date: d, ymd: formatLocalYmd(d) }));
   }, [today]);
 
   // 이번 달 출석률
@@ -366,7 +365,7 @@ export default function Attendance() {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20 sm:pb-4">
-      <div className="px-4 py-6">
+      <div className="max-w-5xl mx-auto px-4 py-6">
         {/* Header */}
         <div className="text-center mb-6">
           <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -521,13 +520,13 @@ export default function Attendance() {
           </Card>
         )}
 
-        {/* 지난 출석 현황 */}
+        {/* 최근 출석 현황 */}
         <Card className="mb-6 p-4">
-          <h3 className="text-lg font-semibold text-gray-800 mb-4">지난 출석 현황</h3>
-          <div className="flex flex-wrap gap-3">
-            {last4SundaysPlusNext.map(({ ymd, date }, idx) => {
+          <h3 className="text-lg font-semibold text-gray-800 mb-4 text-center">최근 출석 현황</h3>
+          <div className="flex justify-center items-center gap-4">
+            {recentSundays.map(({ ymd, date }, idx) => {
               const record = attendanceHistory.find((r) => r.attendDate === ymd);
-              const isFuture = date > today;
+              const isToday = ymd === todayYmd;
 
               const baseCls =
                 record
@@ -536,8 +535,6 @@ export default function Attendance() {
                     : record.status === 'LATE'
                     ? 'bg-yellow-500'
                     : 'bg-red-500'
-                  : isFuture
-                  ? 'bg-gray-200 opacity-60'
                   : 'bg-gray-200';
 
               const iconCls =
@@ -550,12 +547,13 @@ export default function Attendance() {
                   : '';
 
               return (
-                <div key={`${ymd}-${idx}`} className="text-center">
-                  <div className="text-xs text-gray-600 mb-1">
+                <div key={`${ymd}-${idx}`} className="text-center flex-shrink-0">
+                  <div className="text-xs text-gray-600 mb-2 font-medium">
                     {date.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })} (일)
+                    {isToday && <div className="text-blue-600 font-bold text-xs mt-1">오늘</div>}
                   </div>
-                  <div className={`w-9 h-9 rounded-full flex items-center justify-center mx-auto ${baseCls}`}>
-                    {record && <i className={`text-white text-sm ${iconCls}`} />}
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto ${baseCls} ${isToday ? 'ring-4 ring-blue-500 ring-offset-2' : ''} shadow-md`}>
+                    {record && <i className={`text-white text-lg ${iconCls}`} />}
                   </div>
                 </div>
               );
