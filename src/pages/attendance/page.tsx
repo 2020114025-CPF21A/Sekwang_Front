@@ -544,9 +544,12 @@ export default function Attendance() {
                 <i className="ri-map-pin-line mr-2 text-xl"></i>
                 위치 기반 출석체크
               </Button>
-              <p className="text-xs text-gray-500 mt-2 text-center">
-                교회 근처(10m 이내)에서만 인증 가능합니다
-              </p>
+              <div className="mt-2 text-xs text-gray-500 text-center space-y-1">
+                <p>교회 근처(10m 이내)에서만 인증 가능</p>
+                <p className="text-gray-400">
+                  📱 모바일: GPS 사용 | 💻 PC: WiFi/IP 기반 위치 사용
+                </p>
+              </div>
             </div>
 
             <div className="text-center text-gray-500 my-4">또는</div>

@@ -12,6 +12,19 @@ type GalleryItem = {
   uploader?: string;   // 서버에서 username 문자열로 내려옴
   createdAt?: string;
   likes?: number;
+  groupId?: string;    // 다중 이미지 그룹핑
+};
+
+type GalleryGroup = {
+  groupId: string | null;
+  title: string;
+  category: string;
+  description?: string;
+  fileUrls: string[];
+  uploader?: string;
+  createdAt?: string;
+  likes?: number;
+  items: GalleryItem[];
 };
 
 export default function Gallery() {
@@ -62,6 +75,7 @@ export default function Gallery() {
         uploader: typeof it.uploader === 'string' ? it.uploader : (it.uploader?.username ?? ''),
         createdAt: it.createdAt ?? '',
         likes: Number(it.likes ?? 0),
+        groupId: it.groupId ?? null,
       }));
       setItems(normalized.filter((x) => x.fileUrl));
     } catch (e) {
@@ -80,6 +94,35 @@ export default function Gallery() {
     selectedCategory === '전체'
       ? items
       : items.filter((p) => p.category === selectedCategory);
+
+  // 그룹핑: groupId가 같은 것들을 하나로 묶음
+  const grouped = useMemo(() => {
+    const groups = new Map<string | null, GalleryGroup>();
+    
+    filtered.forEach(item => {
+      const key = item.groupId || `single-${item.id}`;
+      
+      if (!groups.has(key)) {
+        groups.set(key, {
+          groupId: item.groupId,
+          title: item.title,
+          category: item.category,
+          description: item.description,
+          fileUrls: [],
+          uploader: item.uploader,
+          createdAt: item.createdAt,
+          likes: item.likes,
+          items: [],
+        });
+      }
+      
+      const group = groups.get(key)!;
+      group.fileUrls.push(item.fileUrl);
+      group.items.push(item);
+    });
+    
+    return Array.from(groups.values());
+  }, [filtered]);
 
   // 날짜 포맷
   const fmtDate = (s?: string) => {
@@ -157,7 +200,7 @@ export default function Gallery() {
     setForm((prev) => ({ ...prev, files: imageFiles, filePreviews: previews }));
   };
 
-  // 다중 파일 업로드
+  // 다중 파일 업로드 (groupId로 묶음)
   const handleUploadClick = async () => {
     if (form.files.length === 0) {
       alert('이미지 파일을 선택하거나 드래그해서 올려주세요.');
@@ -173,12 +216,16 @@ export default function Gallery() {
     setError(null);
 
     try {
+      // groupId 생성 (여러 장일 때만)
+      const groupId = form.files.length > 1 ? crypto.randomUUID() : null;
+      
       // 각 파일을 순차적으로 업로드
       for (let i = 0; i < form.files.length; i++) {
         const file = form.files[i];
-        const title = form.title.trim() 
-          ? `${form.title} (${i + 1}/${form.files.length})`
-          : (file.name.includes('.') ? file.name.replace(/\.[^/.]+$/, '') : file.name);
+        const baseTitle = form.title.trim() || (file.name.includes('.') ? file.name.replace(/\.[^/.]+$/, '') : file.name);
+        const title = form.files.length > 1 
+          ? `${baseTitle} (${i + 1}/${form.files.length})`
+          : baseTitle;
         
         await galleryAPI.upload(file, title, form.category, form.description, user.username);
       }
@@ -397,44 +444,72 @@ export default function Gallery() {
           </div>
         </div>
 
-        {/* Photo Grid */}
+        {/* Photo Grid - Grouped */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {loading ? (
             <Card className="p-6 text-center text-gray-500">불러오는 중...</Card>
           ) : items.length === 0 ? (
             <Card className="p-6 text-center text-gray-500">등록된 사진이 없습니다.</Card>
-          ) : filtered.length === 0 ? (
+          ) : grouped.length === 0 ? (
             <Card className="p-6 text-center text-gray-500">해당 카테고리의 사진이 없습니다.</Card>
           ) : (
-            filtered.map((photo) => (
+            grouped.map((group) => (
               <Card
-                key={photo.id}
+                key={group.groupId || group.items[0]?.id}
                 className="overflow-hidden hover:shadow-lg transition-shadow cursor-pointer"
-                onClick={() => setSelectedImage(photo)}
+                onClick={() => setSelectedImage(group.items[0])}
               >
-                <div className="mb-3">
-                  <img
-                    src={photo.fileUrl}
-                    alt={photo.title}
-                    className="w-full h-48 object-cover object-center rounded-t-xl"
-                    loading="lazy"
-                  />
-                </div>
+                {/* 이미지 그리드 (1장이면 전체, 여러 장이면 그리드) */}
+                {group.fileUrls.length === 1 ? (
+                  <div className="mb-3">
+                    <img
+                      src={group.fileUrls[0]}
+                      alt={group.title}
+                      className="w-full h-48 object-cover object-center rounded-t-xl"
+                      loading="lazy"
+                    />
+                  </div>
+                ) : (
+                  <div className={`mb-3 grid gap-1 ${
+                    group.fileUrls.length === 2 ? 'grid-cols-2' : 
+                    group.fileUrls.length === 3 ? 'grid-cols-3' : 
+                    'grid-cols-2'
+                  }`}>
+                    {group.fileUrls.slice(0, 4).map((url, idx) => (
+                      <div key={idx} className="relative">
+                        <img
+                          src={url}
+                          alt={`${group.title}-${idx}`}
+                          className="w-full h-32 object-cover"
+                          loading="lazy"
+                        />
+                        {idx === 3 && group.fileUrls.length > 4 && (
+                          <div className="absolute inset-0 bg-black bg-opacity-60 flex items-center justify-center text-white text-lg font-bold">
+                            +{group.fileUrls.length - 4}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <div className="p-3 space-y-2">
                   <div className="flex justify-between items-start">
-                    <h3 className="font-semibold text-gray-800 text-sm line-clamp-1">{photo.title}</h3>
+                    <h3 className="font-semibold text-gray-800 text-sm line-clamp-1">
+                      {group.title}
+                      {group.fileUrls.length > 1 && <span className="text-xs text-gray-500 ml-1">({group.fileUrls.length}장)</span>}
+                    </h3>
                     <span className="bg-blue-100 text-blue-600 text-xs px-2 py-1 rounded-full whitespace-nowrap">
-                      {photo.category}
+                      {group.category}
                     </span>
                   </div>
-                  {photo.description && (
-                    <p className="text-sm text-gray-600 line-clamp-2">{photo.description}</p>
+                  {group.description && (
+                    <p className="text-sm text-gray-600 line-clamp-2">{group.description}</p>
                   )}
                   <div className="flex justify-between items-center">
-                    <span className="text-xs text-gray-500">{fmtDate(photo.createdAt)}</span>
+                    <span className="text-xs text-gray-500">{fmtDate(group.createdAt)}</span>
                     <div className="flex items-center space-x-1 text-red-500">
                       <i className="ri-heart-line text-sm"></i>
-                      <span className="text-xs">{photo.likes ?? 0}</span>
+                      <span className="text-xs">{group.likes ?? 0}</span>
                     </div>
                   </div>
                 </div>
