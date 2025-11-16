@@ -22,17 +22,17 @@ export default function Bulletin() {
   const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
 
-  // 업로드 폼 상태
+  // 업로드 폼 상태 (다중 파일)
   const [form, setForm] = useState<{
     title: string;
     publishDate: string;
-    file: File | null;
-    previewUrl: string;
+    files: File[];
+    previewUrls: string[];
   }>({
     title: '',
     publishDate: '',
-    file: null,
-    previewUrl: '',
+    files: [],
+    previewUrls: [],
   });
 
   // 로그인 사용자
@@ -106,29 +106,37 @@ export default function Bulletin() {
     }
   };
 
-  // 파일 선택/드래그
-  const pickFile = (file: File | null) => {
-    if (!file) {
-      if (form.previewUrl) URL.revokeObjectURL(form.previewUrl);
-      setForm((p) => ({ ...p, file: null, previewUrl: '' }));
+  // 다중 파일 선택/드래그
+  const pickFiles = (fileList: FileList | File[] | null) => {
+    const files = Array.from(fileList || []);
+    if (files.length === 0) {
+      form.previewUrls.forEach(url => URL.revokeObjectURL(url));
+      setForm((p) => ({ ...p, files: [], previewUrls: [] }));
       return;
     }
-    // 이미지면 미리보기, PDF면 미리보기 생략
-    const isImage = file.type.startsWith('image/');
-    const preview = isImage ? URL.createObjectURL(file) : '';
-    if (form.previewUrl) URL.revokeObjectURL(form.previewUrl);
-    setForm((p) => ({ ...p, file, previewUrl: preview }));
+    
+    // 이미지나 PDF만 필터링
+    const validFiles = files.filter(f => f.type.startsWith('image/') || f.type === 'application/pdf');
+    if (validFiles.length === 0) {
+      alert('이미지 또는 PDF 파일만 업로드 가능합니다.');
+      return;
+    }
+
+    // 미리보기 생성 (이미지만)
+    form.previewUrls.forEach(url => URL.revokeObjectURL(url));
+    const previews = validFiles.map(f => f.type.startsWith('image/') ? URL.createObjectURL(f) : '');
+    setForm((p) => ({ ...p, files: validFiles, previewUrls: previews }));
   };
 
   const onInputFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    pickFile(e.target.files?.[0] || null);
+    pickFiles(e.target.files);
   };
 
   const onDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
     setDragOver(false);
-    pickFile(e.dataTransfer.files?.[0] || null);
+    pickFiles(e.dataTransfer.files);
   };
   const onDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault(); e.stopPropagation(); setDragOver(true);
@@ -137,7 +145,7 @@ export default function Bulletin() {
     e.preventDefault(); e.stopPropagation(); setDragOver(false);
   };
 
-  // 업로드
+  // 다중 파일 업로드
   const handleUpload = async () => {
     if (!user?.username) {
       alert('로그인이 필요합니다.');
@@ -151,7 +159,7 @@ export default function Bulletin() {
       alert('발행일을 선택하세요.');
       return;
     }
-    if (!form.file) {
+    if (form.files.length === 0) {
       alert('주보 파일을 선택하세요(이미지 또는 PDF).');
       return;
     }
@@ -159,13 +167,21 @@ export default function Bulletin() {
     setUploading(true);
     setError(null);
     try {
-      // POST /api/bulletins/upload (multipart)
-      await bulletinAPI.upload(form.file, user.username, form.title.trim(), form.publishDate);
+      // 각 파일을 순차적으로 업로드
+      for (let i = 0; i < form.files.length; i++) {
+        const file = form.files[i];
+        const title = form.files.length > 1 
+          ? `${form.title.trim()} (${i + 1}/${form.files.length})`
+          : form.title.trim();
+        
+        await bulletinAPI.upload(file, user.username, title, form.publishDate);
+      }
+      
       setIsUploading(false);
-      if (form.previewUrl) URL.revokeObjectURL(form.previewUrl);
-      setForm({ title: '', publishDate: '', file: null, previewUrl: '' });
+      form.previewUrls.forEach(url => url && URL.revokeObjectURL(url));
+      setForm({ title: '', publishDate: '', files: [], previewUrls: [] });
       await load();
-      alert('주보가 업로드되었습니다.');
+      alert(`${form.files.length}개 주보가 업로드되었습니다.`);
     } catch (e: any) {
       console.error(e);
       setError(e?.message || '업로드에 실패했습니다.');
@@ -243,23 +259,34 @@ export default function Bulletin() {
                   dragOver ? 'border-blue-500 bg-blue-50' : 'border-gray-300 bg-white'
                 }`}
               >
-                {form.file ? (
+                {form.files.length > 0 ? (
                   <div className="space-y-3">
-                    {form.previewUrl ? (
-                      <img
-                        src={form.previewUrl}
-                        alt="미리보기"
-                        className="mx-auto max-h-64 rounded-lg object-contain"
-                      />
-                    ) : (
-                      <div className="text-sm text-gray-600">
-                        <i className="ri-file-pdf-2-line text-2xl mr-1"></i>
-                        PDF 파일이 선택되었습니다: {form.file.name}
-                      </div>
-                    )}
+                    <div className="text-sm font-medium text-gray-700">
+                      {form.files.length}개 파일 선택됨
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 max-h-64 overflow-y-auto">
+                      {form.files.map((file, idx) => (
+                        <div key={idx} className="border rounded-lg p-2">
+                          {form.previewUrls[idx] ? (
+                            <img
+                              src={form.previewUrls[idx]}
+                              alt={`preview-${idx}`}
+                              className="w-full h-32 object-cover rounded"
+                            />
+                          ) : (
+                            <div className="h-32 flex items-center justify-center bg-gray-100 rounded">
+                              <div className="text-center">
+                                <i className="ri-file-pdf-2-line text-3xl text-gray-400"></i>
+                                <p className="text-xs text-gray-600 mt-1 truncate px-2">{file.name}</p>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                     <div className="flex gap-2 justify-center">
                       <label className="inline-flex">
-                        <input type="file" accept="image/*,application/pdf" className="hidden" onChange={onInputFile} />
+                        <input type="file" accept="image/*,application/pdf" multiple className="hidden" onChange={onInputFile} />
                         <span className="px-4 py-2 rounded-xl border text-sm cursor-pointer">
                           다른 파일 선택
                         </span>
@@ -268,9 +295,9 @@ export default function Bulletin() {
                         variant="secondary"
                         size="sm"
                         className="rounded-xl"
-                        onClick={() => pickFile(null)}
+                        onClick={() => pickFiles(null)}
                       >
-                        파일 제거
+                        모두 제거
                       </Button>
                     </div>
                   </div>
@@ -283,6 +310,7 @@ export default function Bulletin() {
                       <input
                         type="file"
                         accept="image/*,application/pdf"
+                        multiple
                         className="hidden"
                         onChange={onInputFile}
                       />

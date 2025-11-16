@@ -56,40 +56,52 @@ export default function Monthly() {
   const getDaysInMonth = (year: number, month: number) =>
     new Date(year, month + 1, 0).getDate();
 
-  // ✅ 선택된 월의 출석 맵 {1:true, 2:false, ...}
-  const attendanceMap = useMemo(() => {
-    const days = getDaysInMonth(selectedYear, selectedMonth);
-    const map: Record<number, boolean> = {};
-    for (let d = 1; d <= days; d++) map[d] = false;
+  // ✅ 선택된 월의 일요일 목록
+  const monthSundays = useMemo(() => {
+    const y = selectedYear;
+    const m = selectedMonth;
+    const first = new Date(y, m, 1);
+    const last = new Date(y, m + 1, 0);
+    const list: { ymd: string; date: Date; day: number }[] = [];
 
-    allRecords.forEach((rec) => {
-      const raw = rec.attendDate || rec.date;
-      if (!raw) return;
-      const dt = new Date(raw);
-      if (
-        dt.getFullYear() === selectedYear &&
-        dt.getMonth() === selectedMonth
-      ) {
-        // PRESENT만 출석으로 계산 (원하면 LATE/EXCUSED 포함 규칙 변경 가능)
-        map[dt.getDate()] = String(rec.status).toUpperCase() === 'PRESENT';
-      }
+    const start = new Date(first);
+    // 첫 번째 일요일 찾기
+    const offsetToSunday = (7 - start.getDay()) % 7;
+    start.setDate(start.getDate() + offsetToSunday);
+
+    // 모든 일요일 수집
+    while (start <= last) {
+      list.push({ 
+        ymd: formatLocalYmd(start), 
+        date: new Date(start),
+        day: start.getDate()
+      });
+      start.setDate(start.getDate() + 7);
+    }
+    return list;
+  }, [selectedYear, selectedMonth]);
+
+  // ✅ 일요일별 출석 여부 맵
+  const attendanceMap = useMemo(() => {
+    const byYmd = new Map(allRecords.map(r => [r.attendDate || r.date, r as AttendanceRecord]));
+    const map: Record<number, boolean> = {};
+    
+    monthSundays.forEach(sunday => {
+      const record = byYmd.get(sunday.ymd);
+      map[sunday.day] = record ? String(record.status).toUpperCase() === 'PRESENT' : false;
     });
+    
     return map;
-  }, [allRecords, selectedMonth, selectedYear]);
+  }, [allRecords, monthSundays]);
 
   const getAttendanceRate = () => {
-    const days = getDaysInMonth(selectedYear, selectedMonth);
-    const attended = Object.entries(attendanceMap)
-      .filter(([day, ok]) => parseInt(day) <= days && ok)
-      .length;
-    return Math.round((attended / days) * 100);
+    const total = monthSundays.length;
+    const attended = monthSundays.filter(s => attendanceMap[s.day]).length;
+    return total > 0 ? Math.round((attended / total) * 100) : 0;
   };
 
   const getAttendedDays = () => {
-    const days = getDaysInMonth(selectedYear, selectedMonth);
-    return Object.entries(attendanceMap)
-      .filter(([day, ok]) => parseInt(day) <= days && ok)
-      .length;
+    return monthSundays.filter(s => attendanceMap[s.day]).length;
   };
 
   // 오늘 출석은 출석체크 페이지에서만 가능하도록 (QR/코드 체크인)
@@ -166,22 +178,23 @@ export default function Monthly() {
                 <div className="inline-block p-6 bg-gradient-to-br from-purple-100 to-pink-100 rounded-2xl">
                   <div className="text-6xl mb-2">🍇</div>
                   <p className="text-lg font-bold text-purple-600">
-                    {getAttendedDays()}일 / {getDaysInMonth(selectedYear, selectedMonth)}일
+                    {getAttendedDays()} / {monthSundays.length} 주일
                   </p>
                   <p className="text-sm text-gray-600">출석률 {getAttendanceRate()}%</p>
                 </div>
               </div>
 
-              {/* Grape Grid */}
-              <div className="grid grid-cols-7 gap-2 mb-6">
-                {Array.from({ length: getDaysInMonth(selectedYear, selectedMonth) }, (_, i) => {
-                  const day = i + 1;
-                  const isAttended = attendanceMap[day];
+              {/* Sunday Grape Grid */}
+              <div className="flex flex-wrap justify-center gap-4 mb-6">
+                {monthSundays.map((sunday) => {
+                  const isAttended = attendanceMap[sunday.day];
                   return (
-                    <div key={day} className="text-center">
-                      <div className="text-xs text-gray-600 mb-1">{day}일</div>
+                    <div key={sunday.ymd} className="text-center">
+                      <div className="text-xs text-gray-600 mb-1">
+                        {sunday.date.getMonth() + 1}/{sunday.date.getDate()} (일)
+                      </div>
                       <div
-                        className={`w-10 h-10 rounded-full flex items-center justify-center text-xl transition-all duration-300 ${
+                        className={`w-14 h-14 rounded-full flex items-center justify-center text-2xl transition-all duration-300 ${
                           isAttended ? 'bg-purple-100 scale-110 shadow-lg' : 'bg-gray-100 opacity-50'
                         }`}
                         title={isAttended ? '출석' : '결석'}
@@ -223,13 +236,17 @@ export default function Monthly() {
           <h3 className="text-lg font-semibold text-gray-800 mb-4">이번 달 통계</h3>
           <div className="space-y-4">
             <div className="flex justify-between items-center">
-              <span className="text-gray-600">출석일</span>
-              <span className="text-2xl font-bold text-purple-600">{getAttendedDays()}일</span>
+              <span className="text-gray-600">전체 주일</span>
+              <span className="text-2xl font-bold text-gray-700">{monthSundays.length}회</span>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-gray-600">결석일</span>
+              <span className="text-gray-600">출석한 주일</span>
+              <span className="text-2xl font-bold text-purple-600">{getAttendedDays()}회</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-gray-600">결석한 주일</span>
               <span className="text-2xl font-bold text-red-600">
-                {getDaysInMonth(selectedYear, selectedMonth) - getAttendedDays()}일
+                {monthSundays.length - getAttendedDays()}회
               </span>
             </div>
             <div className="flex justify-between items-center">

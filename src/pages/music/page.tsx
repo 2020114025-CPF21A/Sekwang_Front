@@ -34,8 +34,8 @@ export default function Song() {
     category: '찬양',
     musicalKey: 'C',
     tempoBpm: '120',
-    file: null as File | null,
-    preview: '' as string,
+    files: [] as File[],
+    previews: [] as string[],
   });
 
   const user = useMemo(() => {
@@ -77,14 +77,32 @@ export default function Song() {
       ? items
       : items.filter((s) => s.category === selectedCategory);
 
-  // --- 드래그&드롭 핸들러 ---
+  // --- 다중 파일 드래그&드롭 핸들러 ---
+  const pickFiles = (fileList: FileList | File[] | null) => {
+    const files = Array.from(fileList || []);
+    if (files.length === 0) {
+      form.previews.forEach(url => URL.revokeObjectURL(url));
+      setForm((p) => ({ ...p, files: [], previews: [] }));
+      return;
+    }
+    
+    // 이미지만 필터링
+    const imageFiles = files.filter(f => f.type.startsWith('image/'));
+    if (imageFiles.length === 0) {
+      alert('이미지 파일만 업로드할 수 있어요.');
+      return;
+    }
+    
+    form.previews.forEach(url => URL.revokeObjectURL(url));
+    const previews = imageFiles.map(f => URL.createObjectURL(f));
+    setForm((p) => ({ ...p, files: imageFiles, previews }));
+  };
+
   const onDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
     setDragOver(false);
-    const f = e.dataTransfer.files?.[0];
-    if (!f) return;
-    pickFile(f);
+    pickFiles(e.dataTransfer.files);
   };
 
   const onDragOver = (e: React.DragEvent<HTMLDivElement>) => {
@@ -100,23 +118,7 @@ export default function Song() {
   };
 
   const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0] || null;
-    if (!f) {
-      if (form.preview) URL.revokeObjectURL(form.preview);
-      setForm((p) => ({ ...p, file: null, preview: '' }));
-      return;
-    }
-    pickFile(f);
-  };
-
-  const pickFile = (f: File) => {
-    if (!f.type.startsWith('image/')) {
-      alert('이미지 파일만 업로드할 수 있어요.');
-      return;
-    }
-    if (form.preview) URL.revokeObjectURL(form.preview);
-    const preview = URL.createObjectURL(f);
-    setForm((p) => ({ ...p, file: f, preview }));
+    pickFiles(e.target.files);
   };
 
   const fmtDate = (s?: string) => {
@@ -126,15 +128,15 @@ export default function Song() {
     };
 
   const resetForm = () => {
-    if (form.preview) URL.revokeObjectURL(form.preview);
+    form.previews.forEach(url => URL.revokeObjectURL(url));
     setForm({
       title: '',
       artist: '',
       category: '찬양',
       musicalKey: 'C',
       tempoBpm: '120',
-      file: null,
-      preview: '',
+      files: [],
+      previews: [],
     });
   };
 
@@ -147,26 +149,36 @@ export default function Song() {
       alert('곡 제목을 입력하세요.');
       return;
     }
-    if (!form.file) {
+    if (form.files.length === 0) {
       alert('악보 이미지를 선택하거나 드래그하여 넣어주세요.');
       return;
     }
+    
     setUploading(true);
     setError(null);
     try {
-      await songAPI.upload(
-        form.file,
-        form.title.trim(),
-        form.artist.trim(),
-        form.category,
-        form.musicalKey,
-        Number(form.tempoBpm || 0),
-        user.username
-      );
+      // 각 파일을 순차적으로 업로드
+      for (let i = 0; i < form.files.length; i++) {
+        const file = form.files[i];
+        const title = form.files.length > 1 
+          ? `${form.title.trim()} (${i + 1}/${form.files.length})`
+          : form.title.trim();
+        
+        await songAPI.upload(
+          file,
+          title,
+          form.artist.trim(),
+          form.category,
+          form.musicalKey,
+          Number(form.tempoBpm || 0),
+          user.username
+        );
+      }
+      
       setIsUploading(false);
       resetForm();
       await loadSongs();
-      alert('악보가 업로드되었습니다.');
+      alert(`${form.files.length}개 악보가 업로드되었습니다.`);
     } catch (e: any) {
       console.error(e);
       setError(e?.message || '업로드에 실패했습니다.');
@@ -271,28 +283,36 @@ export default function Song() {
                 dragOver ? 'border-green-500 bg-green-50' : 'border-gray-300 bg-white'
               }`}
             >
-              {form.preview ? (
+              {form.files.length > 0 ? (
                 <div className="space-y-3">
-                  <img
-                    src={form.preview}
-                    alt="미리보기"
-                    className="mx-auto max-h-64 rounded-lg object-contain"
-                  />
+                  <div className="text-sm font-medium text-gray-700">
+                    {form.files.length}개 파일 선택됨
+                  </div>
+                  <div className="grid grid-cols-3 gap-3 max-h-64 overflow-y-auto">
+                    {form.files.map((file, idx) => (
+                      <div key={idx} className="border rounded-lg p-2">
+                        {form.previews[idx] && (
+                          <img
+                            src={form.previews[idx]}
+                            alt={`preview-${idx}`}
+                            className="w-full h-32 object-cover rounded"
+                          />
+                        )}
+                      </div>
+                    ))}
+                  </div>
                   <div className="flex gap-2 justify-center">
                     <Button
                       variant="secondary"
                       size="sm"
-                      onClick={() => {
-                        if (form.preview) URL.revokeObjectURL(form.preview);
-                        setForm((p) => ({ ...p, file: null, preview: '' }));
-                      }}
+                      onClick={() => pickFiles(null)}
                       className="rounded-xl"
                     >
-                      이미지 변경
+                      모두 제거
                     </Button>
                     <label className="inline-flex">
                       <span className="sr-only">파일 선택</span>
-                      <input type="file" accept="image/*" className="hidden" onChange={onFileChange} />
+                      <input type="file" accept="image/*" multiple className="hidden" onChange={onFileChange} />
                       <span className="px-4 py-2 rounded-xl border text-sm cursor-pointer">
                         다른 파일 선택
                       </span>
@@ -305,7 +325,7 @@ export default function Song() {
                   <p className="text-sm text-gray-600">이미지를 여기로 드래그하거나</p>
                   <label className="inline-flex">
                     <span className="sr-only">파일 선택</span>
-                    <input type="file" accept="image/*" className="hidden" onChange={onFileChange} />
+                    <input type="file" accept="image/*" multiple className="hidden" onChange={onFileChange} />
                     <span className="px-4 py-2 rounded-xl border text-sm cursor-pointer">
                       파일 선택
                     </span>

@@ -26,13 +26,13 @@ export default function Gallery() {
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // 업로드 폼 상태
+  // 업로드 폼 상태 (다중 파일)
   const [form, setForm] = useState({
     title: '',
     category: '예배',
     description: '',
-    fileObj: null as File | null,
-    filePreview: '' as string,
+    files: [] as File[],
+    filePreviews: [] as string[],
   });
 
   // 로그인 사용자
@@ -93,15 +93,15 @@ export default function Gallery() {
     }
   };
 
-  // 파일 선택 (수동 업로드용)
+  // 파일 선택 (다중 파일)
   const onPickFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0] || null;
-    if (!f) {
-      setForm((prev) => ({ ...prev, fileObj: null, filePreview: '' }));
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) {
+      setForm((prev) => ({ ...prev, files: [], filePreviews: [] }));
       return;
     }
-    const preview = URL.createObjectURL(f);
-    setForm((prev) => ({ ...prev, fileObj: f, filePreview: preview }));
+    const previews = files.map(f => URL.createObjectURL(f));
+    setForm((prev) => ({ ...prev, files, filePreviews: previews }));
   };
 
   // 공용 업로드 함수 (드롭/버튼 모두 사용)
@@ -143,39 +143,59 @@ export default function Gallery() {
     e.stopPropagation();
     setDragActive(false);
 
-    const files = e.dataTransfer.files;
-    if (!files || files.length === 0) return;
+    const droppedFiles = Array.from(e.dataTransfer.files || []);
+    if (droppedFiles.length === 0) return;
 
-    const file = files[0];
-    // 미리보기 업데이트
-    const preview = URL.createObjectURL(file);
-    setForm((prev) => ({ ...prev, fileObj: file, filePreview: preview }));
+    // 이미지 파일만 필터링
+    const imageFiles = droppedFiles.filter(f => f.type.startsWith('image/'));
+    if (imageFiles.length === 0) {
+      alert('이미지 파일만 업로드 가능합니다.');
+      return;
+    }
 
-    // 제목 비어있으면 파일명으로 자동 지정 (확장자 제거)
-    const autoTitle =
-      form.title.trim() ||
-      (file.name.includes('.') ? file.name.replace(/\.[^/.]+$/, '') : file.name);
-
-    // 곧바로 업로드 (요청사항)
-    await uploadFile(file, autoTitle, form.category, form.description);
-
-    // 미리보기 URL 정리 및 폼 리셋
-    URL.revokeObjectURL(preview);
-    setForm({ title: '', category: form.category, description: '', fileObj: null, filePreview: '' });
-    setIsUploading(false);
+    const previews = imageFiles.map(f => URL.createObjectURL(f));
+    setForm((prev) => ({ ...prev, files: imageFiles, filePreviews: previews }));
   };
 
-  // 수동 업로드 버튼
+  // 다중 파일 업로드
   const handleUploadClick = async () => {
-    if (!form.fileObj) {
+    if (form.files.length === 0) {
       alert('이미지 파일을 선택하거나 드래그해서 올려주세요.');
       return;
     }
-    const title = form.title.trim() || (form.fileObj.name.includes('.') ? form.fileObj.name.replace(/\.[^/.]+$/, '') : form.fileObj.name);
-    await uploadFile(form.fileObj, title, form.category, form.description);
-    if (form.filePreview) URL.revokeObjectURL(form.filePreview);
-    setForm({ title: '', category: '예배', description: '', fileObj: null, filePreview: '' });
-    setIsUploading(false);
+
+    if (!user?.username) {
+      alert('로그인이 필요합니다.');
+      return;
+    }
+
+    setUploading(true);
+    setError(null);
+
+    try {
+      // 각 파일을 순차적으로 업로드
+      for (let i = 0; i < form.files.length; i++) {
+        const file = form.files[i];
+        const title = form.title.trim() 
+          ? `${form.title} (${i + 1}/${form.files.length})`
+          : (file.name.includes('.') ? file.name.replace(/\.[^/.]+$/, '') : file.name);
+        
+        await galleryAPI.upload(file, title, form.category, form.description, user.username);
+      }
+
+      await loadItems();
+      alert(`${form.files.length}개 사진이 업로드되었습니다.`);
+    } catch (e) {
+      console.error('Upload failed:', e);
+      setError('일부 업로드에 실패했습니다.');
+      alert('일부 업로드에 실패했습니다.');
+    } finally {
+      // 미리보기 URL 정리
+      form.filePreviews.forEach(url => URL.revokeObjectURL(url));
+      setForm({ title: '', category: '예배', description: '', files: [], filePreviews: [] });
+      setUploading(false);
+      setIsUploading(false);
+    }
   };
 
   return (
@@ -236,6 +256,7 @@ export default function Gallery() {
                   ref={fileInputRef}
                   type="file"
                   accept="image/*"
+                  multiple
                   onChange={onPickFile}
                   className="hidden"
                 />
@@ -245,7 +266,9 @@ export default function Gallery() {
             {/* 수동 업로드 폼 */}
             <div className="space-y-4 mt-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">사진 제목</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  사진 제목 {form.files.length > 1 && <span className="text-xs text-gray-500">(다중 업로드 시 번호가 자동 추가됩니다)</span>}
+                </label>
                 <input
                   type="text"
                   value={form.title}
@@ -277,7 +300,7 @@ export default function Gallery() {
                     <input
                       type="text"
                       readOnly
-                      value={form.fileObj?.name ?? ''}
+                      value={form.files.length > 0 ? `${form.files.length}개 파일 선택됨` : ''}
                       placeholder="선택된 파일 없음"
                       className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-gray-50 text-sm"
                     />
@@ -290,12 +313,17 @@ export default function Gallery() {
                       찾기
                     </Button>
                   </div>
-                  {form.filePreview && (
-                    <img
-                      src={form.filePreview}
-                      alt="preview"
-                      className="mt-3 h-32 w-full object-cover rounded-lg"
-                    />
+                  {form.filePreviews.length > 0 && (
+                    <div className="mt-3 grid grid-cols-3 gap-2">
+                      {form.filePreviews.map((preview, idx) => (
+                        <img
+                          key={idx}
+                          src={preview}
+                          alt={`preview-${idx}`}
+                          className="h-24 w-full object-cover rounded-lg"
+                        />
+                      ))}
+                    </div>
                   )}
                 </div>
               </div>
@@ -336,8 +364,8 @@ export default function Gallery() {
                 <Button
                   onClick={() => {
                     setIsUploading(false);
-                    if (form.filePreview) URL.revokeObjectURL(form.filePreview);
-                    setForm({ title: '', category: '예배', description: '', fileObj: null, filePreview: '' });
+                    form.filePreviews.forEach(url => URL.revokeObjectURL(url));
+                    setForm({ title: '', category: '예배', description: '', files: [], filePreviews: [] });
                   }}
                   variant="secondary"
                   className="py-3 rounded-xl"
