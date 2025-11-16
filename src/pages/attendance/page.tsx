@@ -138,6 +138,54 @@ export default function Attendance() {
     }
   };
 
+  // --- 위치 기반 체크인 ---
+  const handleLocationCheckIn = async () => {
+    if (!user) { alert('로그인이 필요합니다.'); return; }
+    if (isCheckedIn) { alert('오늘은 이미 출석했습니다.'); return; }
+
+    if (!navigator.geolocation) {
+      alert('이 브라우저는 위치 서비스를 지원하지 않습니다.');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      // 현재 위치 가져오기
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 0,
+        });
+      });
+
+      const { latitude, longitude } = position.coords;
+      
+      const res = await attendanceAPI.checkInByLocation(latitude, longitude);
+      
+      if (!res.ok) {
+        throw new Error(res.message || '위치 기반 출석 실패');
+      }
+      
+      setIsCheckedIn(true);
+      await loadAttendanceHistory(user.username);
+      alert(res.message || '위치 기반 출석이 확인되었습니다.');
+    } catch (error: any) {
+      console.error('Failed to check-in by location:', error);
+      if (error.code === 1) {
+        alert('위치 권한이 필요합니다. 브라우저 설정에서 위치 권한을 허용해주세요.');
+      } else if (error.code === 2) {
+        alert('위치를 가져올 수 없습니다. GPS가 켜져있는지 확인해주세요.');
+      } else if (error.code === 3) {
+        alert('위치 요청 시간이 초과되었습니다.');
+      } else {
+        alert(error?.message ?? '위치 기반 출석에 실패했습니다.');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // ========= jsQR 스캐너 =========
   const drawLine = (begin: {x:number; y:number}, end: {x:number; y:number}, color = '#FF0000') => {
     const ctx = ctxRef.current;
@@ -484,7 +532,24 @@ export default function Attendance() {
               )}
             </div>
 
-            <div className="text-center text-gray-500 mb-6">또는</div>
+            <div className="text-center text-gray-500 my-4">또는</div>
+
+            {/* Location-based Check-in */}
+            <div className="mb-6">
+              <Button
+                onClick={handleLocationCheckIn}
+                className="w-full py-4 rounded-xl bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700"
+                disabled={isLoading}
+              >
+                <i className="ri-map-pin-line mr-2 text-xl"></i>
+                위치 기반 출석체크
+              </Button>
+              <p className="text-xs text-gray-500 mt-2 text-center">
+                교회 근처(10m 이내)에서만 인증 가능합니다
+              </p>
+            </div>
+
+            <div className="text-center text-gray-500 my-4">또는</div>
 
             {/* Code Input */}
             <div>

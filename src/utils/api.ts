@@ -163,6 +163,13 @@ export const attendanceAPI = {
       method: 'POST',
       body: JSON.stringify({ code }),
     }),
+
+  // 위치 기반 체크인
+  checkInByLocation: (latitude: number, longitude: number) =>
+    apiRequest('/attendance/check-in/location', {
+      method: 'POST',
+      body: JSON.stringify({ latitude, longitude }),
+    }),
 };
 
 // ===== 헌금 API =====
