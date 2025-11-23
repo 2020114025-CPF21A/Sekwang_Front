@@ -57,6 +57,7 @@ export default function Gallery() {
       return null;
     }
   }, []);
+  const isAdmin = (user?.role || '').toString().toUpperCase() === 'ADMIN';
 
   const categories = ['전체', '예배', '수련회', '봉사활동', '친교', '기타'];
 
@@ -257,13 +258,15 @@ export default function Gallery() {
           <p className="text-gray-600">청소년부의 소중한 추억들을 함께 나누어요</p>
         </div>
 
-        {/* Upload Button */}
-        <div className="mb-6">
-          <Button onClick={() => setIsUploading(true)} className="w-full py-3 rounded-xl">
-            <i className="ri-upload-line mr-2"></i>
-            사진 업로드
-          </Button>
-        </div>
+        {/* Upload Button (관리자만 표시) */}
+        {isAdmin && (
+          <div className="mb-6">
+            <Button onClick={() => setIsUploading(true)} className="w-full py-3 rounded-xl">
+              <i className="ri-upload-line mr-2"></i>
+              사진 업로드
+            </Button>
+          </div>
+        )}
 
         {/* Upload Modal (드래그 앤 드롭 + 버튼 업로드) */}
         {isUploading && (
@@ -565,6 +568,28 @@ export default function Gallery() {
                       <i className="ri-download-line"></i>
                       <span className="text-sm">다운로드</span>
                     </a>
+                    {/* 관리자 삭제 버튼 */}
+                    {isAdmin && (
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          if (!confirm('이 사진을 삭제하시겠습니까?')) return;
+                          try {
+                            await galleryAPI.delete(selectedImage.id);
+                            setSelectedImage(null);
+                            await loadItems();
+                            alert('삭제되었습니다.');
+                          } catch (err) {
+                            console.error('삭제 실패', err);
+                            alert('삭제에 실패했습니다.');
+                          }
+                        }}
+                        className="flex items-center space-x-1 text-white bg-red-500 hover:bg-red-600 px-3 py-1 rounded-lg"
+                      >
+                        <i className="ri-delete-bin-line"></i>
+                        <span className="text-sm">삭제</span>
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
