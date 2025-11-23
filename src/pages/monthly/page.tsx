@@ -11,6 +11,13 @@ type AttendanceRecord = {
 
 export default function Monthly() {
   const today = useMemo(() => new Date(), []);
+  // 날짜 포맷: YYYY-MM-DD (로컬)
+  const formatLocalYmd = (d: Date) => {
+    const yyyy = d.getFullYear();
+    const mm = `${d.getMonth() + 1}`.padStart(2, '0');
+    const dd = `${d.getDate()}`.padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  };
   const [selectedMonth, setSelectedMonth] = useState(today.getMonth()); // 0~11
   const [selectedYear, setSelectedYear] = useState(today.getFullYear());
   const [user, setUser] = useState<{ username: string } | null>(null);
