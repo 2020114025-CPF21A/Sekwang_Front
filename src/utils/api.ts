@@ -247,6 +247,7 @@ export const faithAPI = {
   getUserJournals: (username: string, page = 0, size = 20) =>
     apiRequest(`/faith-journals/user/${username}?page=${page}&size=${size}`),
   getById: (id: number) => apiRequest(`/faith-journals/${id}`),
+  remove: (id: number) => apiRequest(`/faith-journals/${id}`, { method: 'DELETE' }),
 };
 
 // ===== 사진첩 API (S3 업로드: /gallery/upload) =====
@@ -328,6 +329,7 @@ export const songAPI = {
   },
   getAll: () => apiRequest('/songs'),
   getById: (id: number) => apiRequest(`/songs/${id}`),
+  delete: (id: number) => apiRequest(`/songs/${id}`, { method: 'DELETE' }),
 };
 
 // ===== 퀴즈 API =====

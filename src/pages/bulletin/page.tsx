@@ -44,6 +44,7 @@ export default function Bulletin() {
       return null;
     }
   }, []);
+  const isAdmin = (user?.role || '').toString().toUpperCase() === 'ADMIN';
 
   // 목록 로드
   const load = async () => {
@@ -211,13 +212,15 @@ export default function Bulletin() {
           <p className="text-gray-600">매주 발행되는 청소년부 주보를 확인하세요</p>
         </div>
 
-        {/* Upload Button */}
-        <div className="mb-6">
-          <Button onClick={() => setIsUploading(true)} className="w-full py-3 rounded-xl">
-            <i className="ri-upload-line mr-2"></i>
-            주보 업로드
-          </Button>
-        </div>
+        {/* Upload Button (관리자만 표시) */}
+        {isAdmin && (
+          <div className="mb-6">
+            <Button onClick={() => setIsUploading(true)} className="w-full py-3 rounded-xl">
+              <i className="ri-upload-line mr-2"></i>
+              주보 업로드
+            </Button>
+          </div>
+        )}
 
         {/* Upload Modal */}
         {isUploading && (
@@ -396,6 +399,27 @@ export default function Bulletin() {
                   <i className="ri-download-line mr-2"></i>
                   파일 열기/다운로드
                 </Button>
+                {isAdmin && (
+                  <Button
+                    variant="danger"
+                    onClick={async () => {
+                      if (!confirm('이 주보를 삭제하시겠습니까?')) return;
+                      try {
+                        await bulletinAPI.remove(selected.bulletinNo);
+                        alert('삭제되었습니다.');
+                        setSelected(null);
+                        await load();
+                      } catch (err) {
+                        console.error(err);
+                        alert('삭제에 실패했습니다.');
+                      }
+                    }}
+                    className="py-3 rounded-xl"
+                  >
+                    <i className="ri-delete-bin-line mr-2"></i>
+                    삭제
+                  </Button>
+                )}
               </div>
 
               <p className="text-sm text-gray-500">조회수: {selected.views}</p>

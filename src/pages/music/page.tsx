@@ -46,6 +46,7 @@ export default function Song() {
       return null;
     }
   }, []);
+  const isAdmin = (user?.role || '').toString().toUpperCase() === 'ADMIN';
 
   const loadSongs = async () => {
     try {
@@ -200,13 +201,15 @@ export default function Song() {
           <p className="text-gray-600">청소년부 찬양을 위한 악보를 확인하고 다운로드하세요</p>
         </div>
 
-        {/* 업로드 버튼 */}
-        <div className="mb-6">
-          <Button onClick={() => setIsUploading(true)} className="w-full py-3 rounded-xl">
-            <i className="ri-upload-line mr-2" />
-            악보 업로드
-          </Button>
-        </div>
+        {/* 업로드 버튼 (관리자만 표시) */}
+        {isAdmin && (
+          <div className="mb-6">
+            <Button onClick={() => setIsUploading(true)} className="w-full py-3 rounded-xl">
+              <i className="ri-upload-line mr-2" />
+              악보 업로드
+            </Button>
+          </div>
+        )}
 
         {/* 업로드 폼 (드래그&드롭) */}
         {isUploading && (
@@ -339,7 +342,7 @@ export default function Song() {
             )}
 
             <div className="grid grid-cols-2 gap-3 mt-6">
-              <Button onClick={handleUpload} disabled={uploading || !user} className="py-3 rounded-xl">
+              <Button onClick={handleUpload} disabled={uploading || !isAdmin} className="py-3 rounded-xl">
                 {uploading ? (
                   <span className="inline-flex items-center">
                     <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
@@ -384,7 +387,7 @@ export default function Song() {
         </div>
 
         {/* 리스트 */}
-        <div className="space-y-3">
+            <div className="space-y-3">
           {filtered.length === 0 ? (
             <Card className="p-6 text-center text-gray-500">등록된 악보가 없습니다.</Card>
           ) : (
@@ -412,6 +415,29 @@ export default function Song() {
                       조성: {song.musicalKey || '-'} / 템포: {song.tempoBpm || '-'} / 업로더: {song.uploader || '-'}
                     </div>
                     <div className="text-xs text-gray-400">{fmtDate(song.createdAt)}</div>
+                    {isAdmin && (
+                      <div className="mt-2">
+                        <Button
+                          size="sm"
+                          variant="danger"
+                          onClick={async () => {
+                            if (!confirm('이 악보를 삭제하시겠습니까?')) return;
+                            try {
+                              await songAPI.delete(song.id);
+                              await loadSongs();
+                              alert('삭제되었습니다.');
+                            } catch (err) {
+                              console.error(err);
+                              alert('삭제에 실패했습니다.');
+                            }
+                          }}
+                          className="py-1 rounded-lg text-xs"
+                        >
+                          <i className="ri-delete-bin-line mr-1" />
+                          삭제
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 </div>
               </Card>

@@ -31,6 +31,7 @@ export default function Diary() {
       return raw ? JSON.parse(raw) : null;
     } catch { return null; }
   }, []);
+  const isAdmin = (user?.role || '').toString().toUpperCase() === 'ADMIN';
 
   const fmtDate = (s?: string) => {
     if (!s) return '';
@@ -131,13 +132,15 @@ export default function Diary() {
           <p className="text-gray-600">하나님과 함께한 일상을 기록해보세요</p>
         </div>
 
-        {/* Write Button */}
-        <div className="mb-6">
-          <Button onClick={() => setIsWriting(true)} className="w-full py-3 rounded-xl">
-            <i className="ri-add-line mr-2"></i>
-            일지 작성
-          </Button>
-        </div>
+        {/* Write Button (관리자만 표시) */}
+        {isAdmin && (
+          <div className="mb-6">
+            <Button onClick={() => setIsWriting(true)} className="w-full py-3 rounded-xl">
+              <i className="ri-add-line mr-2"></i>
+              일지 작성
+            </Button>
+          </div>
+        )}
 
         {isWriting && (
           <Card className="mb-6 p-4">
@@ -203,7 +206,7 @@ export default function Diary() {
                 <p className="text-xs text-gray-500 mt-1">{newDiary.content.length}/500자</p>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 mt-6">
+            <div className="grid grid-cols-2 gap-3 mt-6">
                 <Button onClick={handleWriteDiary} className="py-3 rounded-xl" disabled={saving}>
                   {saving ? '저장 중...' : '일지 저장하기'}
                 </Button>
@@ -223,6 +226,29 @@ export default function Diary() {
                 목록으로
               </Button>
             </div>
+            {isAdmin && (
+              <div className="mb-4 flex justify-end">
+                <Button
+                  variant="danger"
+                  size="sm"
+                  onClick={async () => {
+                    if (!selectedDiary) return;
+                    if (!confirm('이 일지를 삭제하시겠습니까?')) return;
+                    try {
+                      await faithAPI.remove(selectedDiary.id);
+                      alert('삭제되었습니다.');
+                      setSelectedDiary(null);
+                      await load();
+                    } catch (err) {
+                      console.error(err);
+                      alert('삭제에 실패했습니다.');
+                    }
+                  }}
+                >
+                  <i className="ri-delete-bin-line mr-1"></i> 삭제
+                </Button>
+              </div>
+            )}
             
             <div className="border-b border-gray-200 pb-4 mb-4">
               <div className="flex items-center space-x-3 mb-3">

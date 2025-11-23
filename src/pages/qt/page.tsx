@@ -33,6 +33,7 @@ export default function QT() {
   const [isSubmitted, setIsSubmitted] = useState(false);
 
   const [user, setUser] = useState<{ username: string } | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [qtHistory, setQtHistory] = useState<QtItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -43,6 +44,7 @@ export default function QT() {
       const parsed = JSON.parse(userData);
       setUser(parsed);
       loadQTHistory(parsed.username);
+      setIsAdmin((parsed?.role || '').toString().toUpperCase() === 'ADMIN');
     } catch {
       localStorage.removeItem('user');
     }
@@ -127,9 +129,10 @@ export default function QT() {
           <p className="text-gray-600">하나님의 말씀을 묵상하고 나누어보세요</p>
         </div>
 
-        {/* QT Writing Form */}
+        {/* QT Writing Form (관리자만 작성 가능) */}
         <Card className="mb-6 p-4">
           {!isSubmitted ? (
+            isAdmin ? (
             <div className="space-y-4">
               <div className="text-center mb-4">
                 <h3 className="text-lg font-semibold text-gray-800 mb-2">오늘의 큐티 작성</h3>
@@ -207,6 +210,22 @@ export default function QT() {
               </div>
             </div>
           ) : (
+            <div className="text-center py-6">
+              <div className="w-20 h-20 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <i className="ri-check-line text-3xl text-purple-600"></i>
+              </div>
+              <h3 className="text-xl font-bold text-purple-600 mb-2">큐티 작성 완료!</h3>
+              <p className="text-gray-600 mb-4">오늘의 큐티가 저장되었습니다.</p>
+              <Button onClick={() => setIsSubmitted(false)} variant="secondary" className="rounded-xl">
+                새 큐티 작성하기
+              </Button>
+            </div>
+          )
+          : (
+            <div className="text-center py-6">
+              <p className="text-sm text-gray-600">큐티 작성은 관리자만 가능합니다.</p>
+            </div>
+          )}
             <div className="text-center py-6">
               <div className="w-20 h-20 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <i className="ri-check-line text-3xl text-purple-600"></i>

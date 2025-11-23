@@ -35,6 +35,7 @@ export default function Notice() {
   };
 
   const currentUser = getCurrentUser();
+  const isAdmin = (currentUser?.role || '').toString().toUpperCase() === 'ADMIN';
 
   // 공지 목록 로드
   const fetchNotices = async () => {
@@ -139,15 +140,9 @@ export default function Notice() {
     return author.name || author.username || '-';
   };
 
-  // 수정/삭제 버튼 노출 조건
-  const canEdit = (notice: NoticeItem) => {
-    if (!currentUser) return false;
-    const username = currentUser.username;
-    const authorName =
-      typeof notice.author === 'string'
-        ? notice.author
-        : notice.author?.username;
-    return username && authorName && username === authorName;
+  // 관리자 권한 여부
+  const canAdmin = () => {
+    return (currentUser?.role || '').toString().toUpperCase() === 'ADMIN';
   };
 
   return (
@@ -162,16 +157,18 @@ export default function Notice() {
           <p className="text-gray-600">청소년부의 소식과 안내사항을 확인하세요</p>
         </div>
 
-        {/* 작성 버튼 */}
-        <div className="mb-6">
-          <Button
-            onClick={() => setIsWriting(true)}
-            className="w-full py-3 rounded-xl"
-          >
-            <i className="ri-add-line mr-2" />
-            공지 작성
-          </Button>
-        </div>
+        {/* 작성 버튼 (관리자만 표시) */}
+        {isAdmin && (
+          <div className="mb-6">
+            <Button
+              onClick={() => setIsWriting(true)}
+              className="w-full py-3 rounded-xl"
+            >
+              <i className="ri-add-line mr-2" />
+              공지 작성
+            </Button>
+          </div>
+        )}
 
         {/* 공지 작성 폼 */}
         {isWriting && (
@@ -274,8 +271,8 @@ export default function Notice() {
                 목록으로
               </Button>
 
-              {/* 수정/삭제 버튼 (작성자 본인만) */}
-              {canEdit(selectedNotice) && (
+              {/* 수정/삭제 버튼 (관리자만) */}
+              {canAdmin() && (
                 <div className="flex gap-2">
                   <Button
                     variant="secondary"
