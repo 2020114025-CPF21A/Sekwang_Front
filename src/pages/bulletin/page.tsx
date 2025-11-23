@@ -86,7 +86,7 @@ export default function Bulletin() {
     }>();
 
     const extractBase = (title: string) => {
-      const m = title.match(/^(.*)\\s\\(\\d+\\/\\d+\\)$/);
+      const m = title.match(/^(.*)\s\(\d+\/\d+\)$/);
       return m ? m[1] : title;
     };
 
