@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { AppRoutes } from './router';
 import { ensureLoginGate } from './utils/api';
 import BackFab from '../src/components/BackFab';
+import Navigation from './components/feature/Navigation';
 
 // Vite 기준: BASE_URL 또는 커스텀 VITE_BASE_PATH 사용
 const BASENAME =
@@ -20,6 +21,7 @@ function App() {
 
   return (
     <BrowserRouter basename={BASENAME}>
+      <Navigation />
       <AppRoutes />
       <BackFab fallback="/" hideOnPaths={['/login']} />
     </BrowserRouter>
