@@ -78,6 +78,35 @@ export default function Song() {
       ? items
       : items.filter((s) => s.category === selectedCategory);
 
+  // 그룹핑: 다중 업로드된 악보를 하나의 카드로 표시 (제목 패턴 기반)
+  const groupedSongs = useMemo(() => {
+    const groups = new Map<string, {
+      key: string;
+      title: string;
+      uploader?: string;
+      fileUrls: string[];
+      items: SongItem[];
+    }>();
+
+    const extractBase = (title: string) => {
+      const m = title.match(/^(.*)\\s\\(\\d+\\/\\d+\\)$/);
+      return m ? m[1] : title;
+    };
+
+    filtered.forEach(s => {
+      const base = extractBase(s.title || '');
+      const key = `${base}::${s.uploader || ''}`;
+      if (!groups.has(key)) {
+        groups.set(key, { key, title: base, uploader: s.uploader, fileUrls: [], items: [] });
+      }
+      const g = groups.get(key)!;
+      if (s.imageUrl) g.fileUrls.push(s.imageUrl);
+      g.items.push(s);
+    });
+
+    return Array.from(groups.values());
+  }, [filtered]);
+
   // --- 다중 파일 드래그&드롭 핸들러 ---
   const pickFiles = (fileList: FileList | File[] | null) => {
     const files = Array.from(fileList || []);
@@ -386,44 +415,54 @@ export default function Song() {
           </div>
         </div>
 
-        {/* 리스트 */}
-            <div className="space-y-3">
-          {filtered.length === 0 ? (
+        {/* 리스트 (그룹화) */}
+        <div className="space-y-3">
+          {groupedSongs.length === 0 ? (
             <Card className="p-6 text-center text-gray-500">등록된 악보가 없습니다.</Card>
           ) : (
-            filtered.map((song) => (
-              <Card key={song.id} className="p-4">
+            groupedSongs.map((g) => (
+              <Card key={g.key} className="p-4">
                 <div className="flex gap-3 items-start">
-                  <img
-                    src={song.imageUrl || ''}
-                    alt={song.title}
-                    className="w-16 h-16 rounded-lg object-cover bg-gray-100 cursor-zoom-in hover:opacity-80 transition" 
-                    onClick={() => {
-                      if (song.imageUrl) setSelectedImage(song.imageUrl); // ✅ 클릭 시 전체보기
-                    }}
-                    onError={(e) => ((e.target as HTMLImageElement).style.visibility = 'hidden')}
-                  />
+                  <div className="flex-shrink-0">
+                    {g.fileUrls[0] ? (
+                      <img
+                        src={g.fileUrls[0]}
+                        alt={g.title}
+                        className="w-16 h-16 rounded-lg object-cover bg-gray-100 cursor-zoom-in hover:opacity-80 transition"
+                        onClick={() => g.fileUrls[0] && setSelectedImage(g.fileUrls[0])}
+                        onError={(e) => ((e.target as HTMLImageElement).style.visibility = 'hidden')}
+                      />
+                    ) : (
+                      <div className="w-16 h-16 rounded-lg border flex items-center justify-center bg-white">
+                        <i className="ri-file-text-line text-gray-400" />
+                      </div>
+                    )}
+                  </div>
                   <div className="flex-1">
                     <div className="flex items-center justify-between">
-                      <h3 className="font-semibold text-gray-800">{song.title}</h3>
+                      <h3 className="font-semibold text-gray-800">{g.title}</h3>
                       <span className="bg-blue-100 text-blue-600 text-xs px-2 py-1 rounded-full">
-                        {song.category}
+                        {g.items[0]?.category ?? '기타'}
                       </span>
                     </div>
-                    <p className="text-sm text-gray-600">{song.artist}</p>
+                    <p className="text-sm text-gray-600">{g.items[0]?.artist}</p>
                     <div className="text-xs text-gray-500 mt-1">
-                      조성: {song.musicalKey || '-'} / 템포: {song.tempoBpm || '-'} / 업로더: {song.uploader || '-'}
+                      업로더: {g.uploader || '-'}
                     </div>
-                    <div className="text-xs text-gray-400">{fmtDate(song.createdAt)}</div>
+                    <div className="text-xs text-gray-400">{fmtDate(g.items[0]?.createdAt)}</div>
+                    {g.fileUrls.length > 1 && <div className="text-xs text-gray-500 mt-2">({g.fileUrls.length}장)</div>}
                     {isAdmin && (
                       <div className="mt-2">
                         <Button
                           size="sm"
                           variant="danger"
                           onClick={async () => {
-                            if (!confirm('이 악보를 삭제하시겠습니까?')) return;
+                            if (!confirm('이 악보 그룹을 삭제하시겠습니까?')) return;
                             try {
-                              await songAPI.delete(song.id);
+                              // delete each item in group
+                              for (const it of g.items) {
+                                await songAPI.delete(it.id);
+                              }
                               await loadSongs();
                               alert('삭제되었습니다.');
                             } catch (err) {

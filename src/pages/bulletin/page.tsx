@@ -73,6 +73,37 @@ export default function Bulletin() {
     load();
   }, []);
 
+  // 그룹핑: 다중 업로드된 주보를 하나의 카드로 표시
+  const grouped = useMemo(() => {
+    // key by baseTitle + publishDate + uploader
+    const groups = new Map<string, {
+      key: string;
+      title: string;
+      publishDate: string;
+      uploader?: string | null;
+      fileUrls: string[];
+      items: BulletinItem[];
+    }>();
+
+    const extractBase = (title: string) => {
+      const m = title.match(/^(.*)\\s\\(\\d+\\/\\d+\\)$/);
+      return m ? m[1] : title;
+    };
+
+    items.forEach(it => {
+      const base = extractBase(it.title || '');
+      const key = `${base}::${it.publishDate || ''}::${it.uploader || ''}`;
+      if (!groups.has(key)) {
+        groups.set(key, { key, title: base, publishDate: it.publishDate, uploader: it.uploader, fileUrls: [], items: [] });
+      }
+      const g = groups.get(key)!;
+      g.fileUrls.push(it.fileUrl);
+      g.items.push(it);
+    });
+
+    return Array.from(groups.values());
+  }, [items]);
+
   // 상세 보기(조회수 증가 포함)
   const openDetail = async (no: number) => {
     try {
@@ -428,65 +459,50 @@ export default function Bulletin() {
         ) : (
           // 목록
           <div className="space-y-4">
-            {loading ? (
-              <Card className="p-6 text-center text-gray-500">불러오는 중...</Card>
-            ) : items.length === 0 ? (
-              <Card className="p-6 text-center text-gray-500">등록된 주보가 없습니다.</Card>
-            ) : (
-              items.map((b) => (
-                <Card
-                  key={b.bulletinNo}
-                  className="p-4 hover:shadow-lg transition-shadow cursor-pointer"
-                  onClick={() => openDetail(b.bulletinNo)}
-                >
-                  <div className="flex items-start space-x-4">
-                    <div className="flex-shrink-0">
-                      {isImageUrl(b.fileUrl) ? (
-                        <img
-                          src={b.fileUrl}
-                          alt={b.title}
-                          className="w-20 h-28 object-cover object-top rounded-lg"
-                        />
-                      ) : (
-                        <div className="w-20 h-28 rounded-lg border flex items-center justify-center bg-white">
-                          <i className="ri-file-pdf-2-line text-2xl text-red-500" />
-                        </div>
-                      )}
+          {loading ? (
+            <Card className="p-6 text-center text-gray-500">불러오는 중...</Card>
+          ) : grouped.length === 0 ? (
+            <Card className="p-6 text-center text-gray-500">등록된 주보가 없습니다.</Card>
+          ) : (
+            grouped.map((g) => (
+              <Card key={g.key} className="p-4 hover:shadow-lg transition-shadow cursor-pointer" onClick={() => g.items[0] && openDetail(g.items[0].bulletinNo)}>
+                <div className="flex items-start space-x-4">
+                  <div className="flex-shrink-0">
+                    {isImageUrl(g.fileUrls[0]) ? (
+                      <img src={g.fileUrls[0]} alt={g.title} className="w-20 h-28 object-cover object-top rounded-lg" />
+                    ) : (
+                      <div className="w-20 h-28 rounded-lg border flex items-center justify-center bg-white">
+                        <i className="ri-file-pdf-2-line text-2xl text-red-500" />
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-semibold text-gray-800 mb-2 line-clamp-2 text-sm">
+                      {g.title}
+                      {g.fileUrls.length > 1 && <span className="text-xs text-gray-500 ml-1">({g.fileUrls.length}장)</span>}
+                    </h3>
+
+                    <div className="flex justify-between items-center text-sm text-gray-600 mb-3">
+                      <span>{fmtDate(g.publishDate)}</span>
+                      <span>업로더: {g.uploader ?? '-'}</span>
                     </div>
 
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-gray-800 mb-2 line-clamp-2 text-sm">
-                        {b.title}
-                      </h3>
-
-                      <div className="flex justify-between items-center text-sm text-gray-600 mb-3">
-                        <span>{fmtDate(b.publishDate)}</span>
-                        <span>조회수: {b.views}</span>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2">
-                        <Button size="sm" className="py-2 rounded-lg text-xs">
-                          <i className="ri-eye-line mr-1"></i>
-                          보기
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            window.open(b.fileUrl, '_blank');
-                          }}
-                          className="py-2 rounded-lg text-xs"
-                        >
-                          <i className="ri-download-line mr-1"></i>
-                          다운로드
-                        </Button>
-                      </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button size="sm" className="py-2 rounded-lg text-xs" onClick={() => g.items[0] && openDetail(g.items[0].bulletinNo)}>
+                        <i className="ri-eye-line mr-1"></i>
+                        보기
+                      </Button>
+                      <Button size="sm" variant="secondary" onClick={(e) => { e.stopPropagation(); window.open(g.fileUrls[0], '_blank'); }} className="py-2 rounded-lg text-xs">
+                        <i className="ri-download-line mr-1"></i>
+                        다운로드
+                      </Button>
                     </div>
                   </div>
-                </Card>
-              ))
-            )}
+                </div>
+              </Card>
+            ))
+          )}
           </div>
         )}
 
