@@ -117,6 +117,109 @@ export default function QT() {
 
   const sharedQTs = qtHistory.filter((qt) => qt.shared).slice(0, 2);
 
+  const qtFormContent = (() => {
+    if (!isSubmitted) {
+      if (isAdmin) {
+        return (
+          <div className="space-y-4">
+            <div className="text-center mb-4">
+              <h3 className="text-lg font-semibold text-gray-800 mb-2">오늘의 큐티 작성</h3>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">날짜</label>
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm bg-white"
+                disabled={isLoading}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">본문 말씀</label>
+              <input
+                type="text"
+                value={verse}
+                onChange={(e) => setVerse(e.target.value)}
+                placeholder="예: 시편 23:1-6"
+                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm bg-white"
+                disabled={isLoading}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">묵상 내용</label>
+              <textarea
+                value={reflection}
+                onChange={(e) => setReflection(e.target.value)}
+                placeholder="오늘 말씀을 통해 깨달은 점이나 은혜받은 내용을 적어보세요..."
+                rows={5}
+                maxLength={500}
+                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm resize-none bg-white"
+                disabled={isLoading}
+              />
+              <p className="text-xs text-gray-500 mt-1">{reflection.length}/500자</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">기도제목</label>
+              <textarea
+                value={prayer}
+                onChange={(e) => setPrayer(e.target.value)}
+                placeholder="오늘의 기도제목을 적어보세요..."
+                rows={3}
+                maxLength={500}
+                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm resize-none bg-white"
+                disabled={isLoading}
+              />
+              <p className="text-xs text-gray-500 mt-1">{prayer.length}/500자</p>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 mt-6">
+              <Button
+                onClick={handleSubmit}
+                className="w-full py-3 bg-purple-600 hover:bg-purple-700 rounded-xl"
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                    저장 중...
+                  </>
+                ) : (
+                  <>
+                    <i className="ri-save-line mr-2"></i>
+                    큐티 저장하기
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        );
+      } else {
+        return (
+          <div className="text-center py-6">
+            <p className="text-sm text-gray-600">큐티 작성은 관리자만 가능합니다.</p>
+          </div>
+        );
+      }
+    } else {
+      return (
+        <div className="text-center py-6">
+          <div className="w-20 h-20 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <i className="ri-check-line text-3xl text-purple-600"></i>
+          </div>
+          <h3 className="text-xl font-bold text-purple-600 mb-2">큐티 작성 완료!</h3>
+          <p className="text-gray-600 mb-4">오늘의 큐티가 저장되었습니다.</p>
+          <Button onClick={() => setIsSubmitted(false)} variant="secondary" className="rounded-xl">
+            새 큐티 작성하기
+          </Button>
+        </div>
+      );
+    }
+  })();
   return (
     <div className="min-h-screen bg-gray-50 pb-20 sm:pb-4">
       <div className="max-w-5xl mx-auto px-4 py-6">
@@ -131,112 +234,7 @@ export default function QT() {
 
         {/* QT Writing Form (관리자만 작성 가능) */}
         <Card className="mb-6 p-4">
-          {!isSubmitted ? (
-            isAdmin ? (
-            <div className="space-y-4">
-              <div className="text-center mb-4">
-                <h3 className="text-lg font-semibold text-gray-800 mb-2">오늘의 큐티 작성</h3>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">날짜</label>
-                <input
-                  type="date"
-                  value={selectedDate}
-                  onChange={(e) => setSelectedDate(e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm bg-white"
-                  disabled={isLoading}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">본문 말씀</label>
-                <input
-                  type="text"
-                  value={verse}
-                  onChange={(e) => setVerse(e.target.value)}
-                  placeholder="예: 시편 23:1-6"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm bg-white"
-                  disabled={isLoading}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">묵상 내용</label>
-                <textarea
-                  value={reflection}
-                  onChange={(e) => setReflection(e.target.value)}
-                  placeholder="오늘 말씀을 통해 깨달은 점이나 은혜받은 내용을 적어보세요..."
-                  rows={5}
-                  maxLength={500}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm resize-none bg-white"
-                  disabled={isLoading}
-                />
-                <p className="text-xs text-gray-500 mt-1">{reflection.length}/500자</p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">기도제목</label>
-                <textarea
-                  value={prayer}
-                  onChange={(e) => setPrayer(e.target.value)}
-                  placeholder="오늘의 기도제목을 적어보세요..."
-                  rows={3}
-                  maxLength={500}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm resize-none bg-white"
-                  disabled={isLoading}
-                />
-                <p className="text-xs text-gray-500 mt-1">{prayer.length}/500자</p>
-              </div>
-
-              <div className="grid grid-cols-1 gap-3 mt-6">
-                <Button
-                  onClick={handleSubmit}
-                  className="w-full py-3 bg-purple-600 hover:bg-purple-700 rounded-xl"
-                  disabled={isLoading}
-                >
-                  {isLoading ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                      저장 중...
-                    </>
-                  ) : (
-                    <>
-                      <i className="ri-save-line mr-2"></i>
-                      큐티 저장하기
-                    </>
-                  )}
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <div className="text-center py-6">
-              <div className="w-20 h-20 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <i className="ri-check-line text-3xl text-purple-600"></i>
-              </div>
-              <h3 className="text-xl font-bold text-purple-600 mb-2">큐티 작성 완료!</h3>
-              <p className="text-gray-600 mb-4">오늘의 큐티가 저장되었습니다.</p>
-              <Button onClick={() => setIsSubmitted(false)} variant="secondary" className="rounded-xl">
-                새 큐티 작성하기
-              </Button>
-            </div>
-          )
-          : (
-            <div className="text-center py-6">
-              <p className="text-sm text-gray-600">큐티 작성은 관리자만 가능합니다.</p>
-            </div>
-          )}
-            <div className="text-center py-6">
-              <div className="w-20 h-20 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <i className="ri-check-line text-3xl text-purple-600"></i>
-              </div>
-              <h3 className="text-xl font-bold text-purple-600 mb-2">큐티 작성 완료!</h3>
-              <p className="text-gray-600 mb-4">오늘의 큐티가 저장되었습니다.</p>
-              <Button onClick={() => setIsSubmitted(false)} variant="secondary" className="rounded-xl">
-                새 큐티 작성하기
-              </Button>
-            </div>
-          )}
+          {qtFormContent}
         </Card>
 
         {/* QT Statistics */}
