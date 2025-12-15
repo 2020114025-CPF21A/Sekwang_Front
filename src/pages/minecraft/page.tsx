@@ -443,9 +443,9 @@ export default function Minecraft() {
                         </div>
                         <div className="flex items-center text-xs text-gray-500 mt-1">
                           <span>{formatEventTime(log.eventTime)}</span>
-                          {log.eventType === 'LEAVE' && log.sessionDurationMinutes && (
+                          {log.eventType === 'LEAVE' && log.sessionDurationMinutes !== null && log.sessionDurationMinutes !== undefined && (
                             <span className="ml-2 text-purple-600">
-                              ⏱️ {log.sessionDurationMinutes}분 플레이
+                              ⏱️ {log.sessionDurationMinutes < 1 ? '1분 미만' : `${log.sessionDurationMinutes}분`} 플레이
                             </span>
                           )}
                         </div>
