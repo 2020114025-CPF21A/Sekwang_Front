@@ -1,0 +1,315 @@
+import { useState, useEffect } from 'react';
+import Card from '../../components/base/Card';
+
+interface ServerStatus {
+  online: boolean;
+  serverName: string;
+  version: string;
+  currentPlayers: number;
+  maxPlayers: number;
+  serverAddress: string;
+  port: number;
+  latency: number;
+}
+
+interface PlayerList {
+  online: boolean;
+  count: number;
+  players: string[];
+}
+
+const API_BASE = import.meta.env.VITE_API_URL || '';
+
+export default function Minecraft() {
+  const [status, setStatus] = useState<ServerStatus | null>(null);
+  const [players, setPlayers] = useState<PlayerList | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
+  const fetchServerStatus = async () => {
+    try {
+      setError(null);
+      const [statusRes, playersRes] = await Promise.all([
+        fetch(`${API_BASE}/api/minecraft/status`),
+        fetch(`${API_BASE}/api/minecraft/players`)
+      ]);
+
+      if (!statusRes.ok || !playersRes.ok) {
+        throw new Error('서버 상태를 가져올 수 없습니다');
+      }
+
+      const statusData = await statusRes.json();
+      const playersData = await playersRes.json();
+
+      setStatus(statusData);
+      setPlayers(playersData);
+      setLastUpdated(new Date());
+    } catch (err) {
+      console.error('Error fetching server status:', err);
+      setError('서버 정보를 불러오는데 실패했습니다');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchServerStatus();
+    // 30초마다 자동 갱신
+    const interval = setInterval(fetchServerStatus, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const getStatusColor = (online: boolean) => {
+    return online ? 'bg-green-500' : 'bg-red-500';
+  };
+
+  const getStatusText = (online: boolean) => {
+    return online ? '온라인' : '오프라인';
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    alert('서버 주소가 복사되었습니다!');
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50 pb-20 sm:pb-4">
+      {/* 헤더 */}
+      <div
+        className="text-white bg-gradient-to-br from-green-600 to-emerald-800"
+        style={{
+          backgroundImage: `linear-gradient(rgba(0,0,0,0.4), rgba(0,0,0,0.4)), url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+        }}
+      >
+        <div className="px-4 py-8 text-center">
+          <div className="w-20 h-20 bg-white/20 rounded-2xl flex items-center justify-center mx-auto mb-4 backdrop-blur-sm">
+            <span className="text-4xl">⛏️</span>
+          </div>
+          <h1 className="text-2xl font-bold mb-2">마인크래프트 서버</h1>
+          <p className="text-green-100">Sekwang Minecraft Server</p>
+        </div>
+      </div>
+
+      {/* 콘텐츠 */}
+      <div className="max-w-2xl mx-auto px-4 -mt-4">
+        {/* 서버 상태 카드 */}
+        <Card className="mb-6 p-6 relative overflow-hidden">
+          {/* 배경 장식 */}
+          <div className="absolute top-0 right-0 w-32 h-32 bg-green-100 rounded-full -mr-16 -mt-16 opacity-50"></div>
+          
+          <div className="relative">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-lg font-semibold text-gray-800 flex items-center">
+                <span className="mr-2">🎮</span> 서버 상태
+              </h2>
+              <button
+                onClick={fetchServerStatus}
+                disabled={loading}
+                className="text-sm text-blue-600 hover:text-blue-800 flex items-center disabled:opacity-50"
+              >
+                <i className={`ri-refresh-line mr-1 ${loading ? 'animate-spin' : ''}`}></i>
+                새로고침
+              </button>
+            </div>
+
+            {loading && !status ? (
+              <div className="text-center py-8">
+                <div className="w-12 h-12 border-4 border-green-200 border-t-green-600 rounded-full animate-spin mx-auto mb-4"></div>
+                <p className="text-gray-500">서버 정보를 불러오는 중...</p>
+              </div>
+            ) : error ? (
+              <div className="text-center py-8">
+                <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <i className="ri-error-warning-line text-2xl text-red-500"></i>
+                </div>
+                <p className="text-red-500 mb-4">{error}</p>
+                <button
+                  onClick={fetchServerStatus}
+                  className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition"
+                >
+                  다시 시도
+                </button>
+              </div>
+            ) : status ? (
+              <div>
+                {/* 상태 표시 */}
+                <div className="flex items-center justify-center mb-6">
+                  <div className={`w-4 h-4 rounded-full ${getStatusColor(status.online)} mr-3 animate-pulse`}></div>
+                  <span className={`text-xl font-bold ${status.online ? 'text-green-600' : 'text-red-600'}`}>
+                    {getStatusText(status.online)}
+                  </span>
+                </div>
+
+                {status.online && (
+                  <>
+                    {/* 서버 정보 그리드 */}
+                    <div className="grid grid-cols-2 gap-4 mb-6">
+                      <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-4 text-center">
+                        <div className="text-3xl font-bold text-blue-600">{status.currentPlayers}</div>
+                        <div className="text-sm text-blue-700">/ {status.maxPlayers} 명</div>
+                        <div className="text-xs text-blue-600 mt-1">접속 중</div>
+                      </div>
+                      <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-4 text-center">
+                        <div className="text-3xl font-bold text-purple-600">{status.latency}</div>
+                        <div className="text-sm text-purple-700">ms</div>
+                        <div className="text-xs text-purple-600 mt-1">지연시간</div>
+                      </div>
+                    </div>
+
+                    {/* 서버 상세 정보 */}
+                    <div className="space-y-3 bg-gray-50 rounded-xl p-4">
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-600 text-sm">서버 이름</span>
+                        <span className="font-medium text-gray-800">{status.serverName}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-600 text-sm">버전</span>
+                        <span className="font-medium text-gray-800">{status.version}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-600 text-sm">서버 주소</span>
+                        <button
+                          onClick={() => copyToClipboard(`${status.serverAddress}:${status.port}`)}
+                          className="font-mono text-sm bg-gray-200 hover:bg-gray-300 px-3 py-1 rounded-lg transition flex items-center"
+                        >
+                          {status.serverAddress}:{status.port}
+                          <i className="ri-file-copy-line ml-2 text-gray-500"></i>
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* 마지막 업데이트 */}
+                {lastUpdated && (
+                  <p className="text-xs text-gray-400 text-center mt-4">
+                    마지막 업데이트: {lastUpdated.toLocaleTimeString('ko-KR')}
+                  </p>
+                )}
+              </div>
+            ) : null}
+          </div>
+        </Card>
+
+        {/* 접속자 목록 */}
+        {status?.online && players && (
+          <Card className="mb-6 p-6">
+            <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+              <span className="mr-2">👥</span> 현재 접속자
+              <span className="ml-2 px-2 py-1 bg-green-100 text-green-700 text-sm rounded-full">
+                {players.count}명
+              </span>
+            </h2>
+
+            {players.count > 0 ? (
+              <div className="grid grid-cols-2 gap-2">
+                {players.players.length > 0 ? (
+                  players.players.map((player, index) => (
+                    <div
+                      key={index}
+                      className="flex items-center bg-gray-50 rounded-lg p-3"
+                    >
+                      <div className="w-8 h-8 bg-gradient-to-br from-green-400 to-emerald-500 rounded-lg flex items-center justify-center mr-3">
+                        <span className="text-white text-sm font-bold">
+                          {player.charAt(0).toUpperCase()}
+                        </span>
+                      </div>
+                      <span className="font-medium text-gray-800 truncate">{player}</span>
+                    </div>
+                  ))
+                ) : (
+                  <div className="col-span-2 text-center py-4 text-gray-500">
+                    <p className="text-sm">플레이어 {players.count}명 접속 중</p>
+                    <p className="text-xs mt-1 text-gray-400">
+                      (상세 목록은 서버에서 지원하지 않습니다)
+                    </p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-gray-400">
+                <i className="ri-user-line text-4xl mb-2"></i>
+                <p>현재 접속 중인 플레이어가 없습니다</p>
+              </div>
+            )}
+          </Card>
+        )}
+
+        {/* 접속 방법 안내 */}
+        <Card className="mb-6 p-6">
+          <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+            <span className="mr-2">📱</span> 접속 방법
+          </h2>
+
+          <div className="space-y-4">
+            <div className="flex items-start">
+              <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center mr-3 flex-shrink-0">
+                <span className="text-blue-600 font-bold text-sm">1</span>
+              </div>
+              <div>
+                <h3 className="font-medium text-gray-800">마인크래프트 베드락 에디션 실행</h3>
+                <p className="text-sm text-gray-600">모바일, PC (Windows 10/11), 콘솔 지원</p>
+              </div>
+            </div>
+
+            <div className="flex items-start">
+              <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center mr-3 flex-shrink-0">
+                <span className="text-blue-600 font-bold text-sm">2</span>
+              </div>
+              <div>
+                <h3 className="font-medium text-gray-800">플레이 → 서버 → 서버 추가</h3>
+                <p className="text-sm text-gray-600">서버 탭에서 "서버 추가" 버튼 클릭</p>
+              </div>
+            </div>
+
+            <div className="flex items-start">
+              <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center mr-3 flex-shrink-0">
+                <span className="text-blue-600 font-bold text-sm">3</span>
+              </div>
+              <div>
+                <h3 className="font-medium text-gray-800">서버 정보 입력</h3>
+                <div className="mt-2 bg-gray-100 rounded-lg p-3 font-mono text-sm">
+                  <div className="flex justify-between mb-1">
+                    <span className="text-gray-500">서버 주소:</span>
+                    <span className="text-gray-800">13.209.16.201</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">포트:</span>
+                    <span className="text-gray-800">19132</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        {/* 서버 규칙 */}
+        <Card className="mb-6 p-6 bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200">
+          <h2 className="text-lg font-semibold text-amber-800 mb-4 flex items-center">
+            <span className="mr-2">📜</span> 서버 규칙
+          </h2>
+
+          <ul className="space-y-2 text-sm text-amber-900">
+            <li className="flex items-start">
+              <i className="ri-checkbox-circle-fill text-amber-600 mr-2 mt-0.5"></i>
+              다른 플레이어의 건축물을 허락 없이 파괴하지 마세요
+            </li>
+            <li className="flex items-start">
+              <i className="ri-checkbox-circle-fill text-amber-600 mr-2 mt-0.5"></i>
+              핵, 치트, 불법 클라이언트 사용 금지
+            </li>
+            <li className="flex items-start">
+              <i className="ri-checkbox-circle-fill text-amber-600 mr-2 mt-0.5"></i>
+              비속어, 욕설, 혐오 발언 금지
+            </li>
+            <li className="flex items-start">
+              <i className="ri-checkbox-circle-fill text-amber-600 mr-2 mt-0.5"></i>
+              스폰 주변은 깔끔하게 유지해주세요
+            </li>
+          </ul>
+        </Card>
+      </div>
+    </div>
+  );
+}

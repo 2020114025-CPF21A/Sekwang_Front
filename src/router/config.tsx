@@ -14,6 +14,7 @@ import Diary from "../pages/diary/page";
 import Bulletin from "../pages/bulletin/page";
 import Music from "../pages/music/page";
 import Monthly from "../pages/monthly/page";
+import Minecraft from "../pages/minecraft/page";
 
 const routes: RouteObject[] = [
   {
@@ -67,6 +68,10 @@ const routes: RouteObject[] = [
   {
     path: "/game",
     element: <Game />,
+  },
+  {
+    path: "/minecraft",
+    element: <Minecraft />,
   },
   {
     path: "*",
