@@ -397,11 +397,11 @@ export default function Minecraft() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 rounded-xl p-4 text-center">
                     <div className="text-3xl font-bold text-indigo-600">{dailyStats.uniquePlayers}</div>
-                    <div className="text-sm text-indigo-700">고유 접속자</div>
+                    <div className="text-sm text-indigo-700">접속한 인원</div>
                   </div>
                   <div className="bg-gradient-to-br from-pink-50 to-pink-100 rounded-xl p-4 text-center">
                     <div className="text-3xl font-bold text-pink-600">{dailyStats.totalSessions}</div>
-                    <div className="text-sm text-pink-700">총 접속</div>
+                    <div className="text-sm text-pink-700">총 접속 횟수</div>
                   </div>
                 </div>
               </Card>
