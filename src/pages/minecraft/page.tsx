@@ -194,7 +194,7 @@ export default function Minecraft() {
               : 'text-gray-600 hover:bg-gray-100'
               }`}
           >
-            🏆 랭킹
+            🏆 플레이타임
           </button>
         </div>
 
