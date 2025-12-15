@@ -557,39 +557,45 @@ export default function Minecraft() {
                 {events.map((event) => (
                   <div
                     key={event.id}
-                    className={`flex items-center p-3 rounded-lg ${event.eventType === 'SPAWN'
+                    className={`flex items-center p-3 rounded-lg ${event.eventType === 'SPAWN' || event.eventType === 'JOIN_SPAWN'
                         ? 'bg-blue-50 border-l-4 border-blue-500'
-                        : event.eventType === 'DEATH'
-                          ? 'bg-gray-100 border-l-4 border-gray-500'
-                          : event.eventType === 'CHAT'
-                            ? 'bg-yellow-50 border-l-4 border-yellow-500'
-                            : 'bg-purple-50 border-l-4 border-purple-500'
+                        : event.eventType === 'RESPAWN'
+                          ? 'bg-purple-50 border-l-4 border-purple-500'
+                          : event.eventType === 'DEATH'
+                            ? 'bg-red-50 border-l-4 border-red-500'
+                            : event.eventType === 'CHAT'
+                              ? 'bg-yellow-50 border-l-4 border-yellow-500'
+                              : 'bg-gray-50 border-l-4 border-gray-500'
                       }`}
                   >
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-3 ${event.eventType === 'SPAWN' ? 'bg-blue-200'
-                        : event.eventType === 'DEATH' ? 'bg-gray-300'
-                          : event.eventType === 'CHAT' ? 'bg-yellow-200'
-                            : 'bg-purple-200'
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-3 ${event.eventType === 'SPAWN' || event.eventType === 'JOIN_SPAWN' ? 'bg-blue-200'
+                        : event.eventType === 'RESPAWN' ? 'bg-purple-200'
+                          : event.eventType === 'DEATH' ? 'bg-red-200'
+                            : event.eventType === 'CHAT' ? 'bg-yellow-200'
+                              : 'bg-gray-200'
                       }`}>
-                      {event.eventType === 'SPAWN' ? '🔄'
-                        : event.eventType === 'DEATH' ? '💀'
-                          : event.eventType === 'CHAT' ? '💬'
-                            : '⚡'}
+                      {event.eventType === 'SPAWN' || event.eventType === 'JOIN_SPAWN' ? '🌟'
+                        : event.eventType === 'RESPAWN' ? '🔄'
+                          : event.eventType === 'DEATH' ? '💀'
+                            : event.eventType === 'CHAT' ? '💬'
+                              : '⚡'}
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center">
                         {event.playerName && (
                           <span className="font-medium text-gray-800">{event.playerName}</span>
                         )}
-                        <span className={`ml-2 text-xs px-2 py-0.5 rounded ${event.eventType === 'SPAWN' ? 'bg-blue-200 text-blue-700'
-                            : event.eventType === 'DEATH' ? 'bg-gray-300 text-gray-700'
-                              : event.eventType === 'CHAT' ? 'bg-yellow-200 text-yellow-700'
-                                : 'bg-purple-200 text-purple-700'
+                        <span className={`ml-2 text-xs px-2 py-0.5 rounded ${event.eventType === 'SPAWN' || event.eventType === 'JOIN_SPAWN' ? 'bg-blue-200 text-blue-700'
+                            : event.eventType === 'RESPAWN' ? 'bg-purple-200 text-purple-700'
+                              : event.eventType === 'DEATH' ? 'bg-red-200 text-red-700'
+                                : event.eventType === 'CHAT' ? 'bg-yellow-200 text-yellow-700'
+                                  : 'bg-gray-200 text-gray-700'
                           }`}>
-                          {event.eventType === 'SPAWN' ? '리스폰'
-                            : event.eventType === 'DEATH' ? '사망'
-                              : event.eventType === 'CHAT' ? '채팅'
-                                : event.eventType}
+                          {event.eventType === 'SPAWN' || event.eventType === 'JOIN_SPAWN' ? '첫 접속'
+                            : event.eventType === 'RESPAWN' ? '리스폰'
+                              : event.eventType === 'DEATH' ? '사망'
+                                : event.eventType === 'CHAT' ? '채팅'
+                                  : event.eventType}
                         </span>
                       </div>
                       {event.message && (
