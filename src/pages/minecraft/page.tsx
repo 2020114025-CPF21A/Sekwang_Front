@@ -39,6 +39,14 @@ interface PlayTimeRanking {
   formattedPlayTime: string;
 }
 
+interface GameEvent {
+  id: number;
+  eventType: string;
+  playerName: string | null;
+  message: string | null;
+  eventTime: string;
+}
+
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
 export default function Minecraft() {
@@ -47,10 +55,11 @@ export default function Minecraft() {
   const [logs, setLogs] = useState<PlayerLog[]>([]);
   const [dailyStats, setDailyStats] = useState<DailyStats | null>(null);
   const [ranking, setRanking] = useState<PlayTimeRanking[]>([]);
+  const [events, setEvents] = useState<GameEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [activeTab, setActiveTab] = useState<'status' | 'logs' | 'ranking'>('status');
+  const [activeTab, setActiveTab] = useState<'status' | 'logs' | 'ranking' | 'events'>('status');
 
   const fetchServerStatus = async () => {
     try {
@@ -80,10 +89,11 @@ export default function Minecraft() {
 
   const fetchLogs = async () => {
     try {
-      const [logsRes, statsRes, rankingRes] = await Promise.all([
+      const [logsRes, statsRes, rankingRes, eventsRes] = await Promise.all([
         fetch(`${API_BASE}/api/minecraft/logs`),
         fetch(`${API_BASE}/api/minecraft/stats/daily`),
-        fetch(`${API_BASE}/api/minecraft/stats/ranking`)
+        fetch(`${API_BASE}/api/minecraft/stats/ranking`),
+        fetch(`${API_BASE}/api/minecraft/events`)
       ]);
 
       if (logsRes.ok) {
@@ -97,6 +107,10 @@ export default function Minecraft() {
       if (rankingRes.ok) {
         const rankingData = await rankingRes.json();
         setRanking(rankingData);
+      }
+      if (eventsRes.ok) {
+        const eventsData = await eventsRes.json();
+        setEvents(eventsData);
       }
     } catch (err) {
       console.error('Error fetching logs:', err);
@@ -195,6 +209,15 @@ export default function Minecraft() {
               }`}
           >
             🏆 플레이타임
+          </button>
+          <button
+            onClick={() => setActiveTab('events')}
+            className={`flex-1 py-3 text-sm font-medium transition ${activeTab === 'events'
+              ? 'bg-green-600 text-white'
+              : 'text-gray-600 hover:bg-gray-100'
+              }`}
+          >
+            ⚡ 이벤트
           </button>
         </div>
 
@@ -513,6 +536,75 @@ export default function Minecraft() {
                 <i className="ri-trophy-line text-4xl mb-2"></i>
                 <p>아직 랭킹 데이터가 없습니다</p>
                 <p className="text-sm mt-1">서버에서 플레이하면 기록됩니다!</p>
+              </div>
+            )}
+          </Card>
+        )}
+
+        {/* 이벤트 탭 */}
+        {activeTab === 'events' && (
+          <Card className="mb-6 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-800 flex items-center">
+                <span className="mr-2">⚡</span> 게임 이벤트
+                <span className="ml-2 w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></span>
+              </h2>
+              <span className="text-xs text-gray-400">리스폰, 채팅, 죽음 등</span>
+            </div>
+
+            {events.length > 0 ? (
+              <div className="space-y-2 max-h-96 overflow-y-auto">
+                {events.map((event) => (
+                  <div
+                    key={event.id}
+                    className={`flex items-center p-3 rounded-lg ${event.eventType === 'SPAWN'
+                        ? 'bg-blue-50 border-l-4 border-blue-500'
+                        : event.eventType === 'DEATH'
+                          ? 'bg-gray-100 border-l-4 border-gray-500'
+                          : event.eventType === 'CHAT'
+                            ? 'bg-yellow-50 border-l-4 border-yellow-500'
+                            : 'bg-purple-50 border-l-4 border-purple-500'
+                      }`}
+                  >
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-3 ${event.eventType === 'SPAWN' ? 'bg-blue-200'
+                        : event.eventType === 'DEATH' ? 'bg-gray-300'
+                          : event.eventType === 'CHAT' ? 'bg-yellow-200'
+                            : 'bg-purple-200'
+                      }`}>
+                      {event.eventType === 'SPAWN' ? '🔄'
+                        : event.eventType === 'DEATH' ? '💀'
+                          : event.eventType === 'CHAT' ? '💬'
+                            : '⚡'}
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center">
+                        {event.playerName && (
+                          <span className="font-medium text-gray-800">{event.playerName}</span>
+                        )}
+                        <span className={`ml-2 text-xs px-2 py-0.5 rounded ${event.eventType === 'SPAWN' ? 'bg-blue-200 text-blue-700'
+                            : event.eventType === 'DEATH' ? 'bg-gray-300 text-gray-700'
+                              : event.eventType === 'CHAT' ? 'bg-yellow-200 text-yellow-700'
+                                : 'bg-purple-200 text-purple-700'
+                          }`}>
+                          {event.eventType === 'SPAWN' ? '리스폰'
+                            : event.eventType === 'DEATH' ? '사망'
+                              : event.eventType === 'CHAT' ? '채팅'
+                                : event.eventType}
+                        </span>
+                      </div>
+                      {event.message && (
+                        <p className="text-sm text-gray-600 mt-1">{event.message}</p>
+                      )}
+                      <span className="text-xs text-gray-400">{formatEventTime(event.eventTime)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-12 text-gray-400">
+                <i className="ri-flashlight-line text-4xl mb-2"></i>
+                <p>아직 이벤트가 없습니다</p>
+                <p className="text-sm mt-1">게임에서 리스폰하거나 채팅하면 기록됩니다!</p>
               </div>
             )}
           </Card>
