@@ -129,7 +129,9 @@ export default function Minecraft() {
   };
 
   const formatEventTime = (eventTime: string) => {
-    const date = new Date(eventTime);
+    // 서버에서 오는 시간은 UTC이므로 'Z'를 붙여서 UTC로 파싱
+    const utcTime = eventTime.endsWith('Z') ? eventTime : eventTime + 'Z';
+    const date = new Date(utcTime);
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
     const diffMins = Math.floor(diffMs / 60000);
@@ -170,8 +172,8 @@ export default function Minecraft() {
           <button
             onClick={() => setActiveTab('status')}
             className={`flex-1 py-3 text-sm font-medium transition ${activeTab === 'status'
-                ? 'bg-green-600 text-white'
-                : 'text-gray-600 hover:bg-gray-100'
+              ? 'bg-green-600 text-white'
+              : 'text-gray-600 hover:bg-gray-100'
               }`}
           >
             🎮 서버 상태
@@ -179,8 +181,8 @@ export default function Minecraft() {
           <button
             onClick={() => setActiveTab('logs')}
             className={`flex-1 py-3 text-sm font-medium transition ${activeTab === 'logs'
-                ? 'bg-green-600 text-white'
-                : 'text-gray-600 hover:bg-gray-100'
+              ? 'bg-green-600 text-white'
+              : 'text-gray-600 hover:bg-gray-100'
               }`}
           >
             📋 접속 로그
@@ -188,8 +190,8 @@ export default function Minecraft() {
           <button
             onClick={() => setActiveTab('ranking')}
             className={`flex-1 py-3 text-sm font-medium transition ${activeTab === 'ranking'
-                ? 'bg-green-600 text-white'
-                : 'text-gray-600 hover:bg-gray-100'
+              ? 'bg-green-600 text-white'
+              : 'text-gray-600 hover:bg-gray-100'
               }`}
           >
             🏆 랭킹
@@ -421,8 +423,8 @@ export default function Minecraft() {
                     <div
                       key={log.id}
                       className={`flex items-center p-3 rounded-lg ${log.eventType === 'JOIN'
-                          ? 'bg-green-50 border-l-4 border-green-500'
-                          : 'bg-red-50 border-l-4 border-red-500'
+                        ? 'bg-green-50 border-l-4 border-green-500'
+                        : 'bg-red-50 border-l-4 border-red-500'
                         }`}
                     >
                       <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-3 ${log.eventType === 'JOIN' ? 'bg-green-200' : 'bg-red-200'
@@ -433,8 +435,8 @@ export default function Minecraft() {
                         <div className="flex items-center">
                           <span className="font-medium text-gray-800">{log.playerName}</span>
                           <span className={`ml-2 text-xs px-2 py-0.5 rounded ${log.eventType === 'JOIN'
-                              ? 'bg-green-200 text-green-700'
-                              : 'bg-red-200 text-red-700'
+                            ? 'bg-green-200 text-green-700'
+                            : 'bg-red-200 text-red-700'
                             }`}>
                             {log.eventType === 'JOIN' ? '입장' : '퇴장'}
                           </span>
@@ -475,21 +477,21 @@ export default function Minecraft() {
                   <div
                     key={player.rank}
                     className={`flex items-center p-4 rounded-xl ${player.rank === 1
-                        ? 'bg-gradient-to-r from-yellow-100 to-amber-100 border border-yellow-300'
-                        : player.rank === 2
-                          ? 'bg-gradient-to-r from-gray-100 to-slate-100 border border-gray-300'
-                          : player.rank === 3
-                            ? 'bg-gradient-to-r from-orange-100 to-amber-100 border border-orange-300'
-                            : 'bg-gray-50'
+                      ? 'bg-gradient-to-r from-yellow-100 to-amber-100 border border-yellow-300'
+                      : player.rank === 2
+                        ? 'bg-gradient-to-r from-gray-100 to-slate-100 border border-gray-300'
+                        : player.rank === 3
+                          ? 'bg-gradient-to-r from-orange-100 to-amber-100 border border-orange-300'
+                          : 'bg-gray-50'
                       }`}
                   >
                     <div className={`w-10 h-10 rounded-full flex items-center justify-center mr-4 text-lg font-bold ${player.rank === 1
-                        ? 'bg-yellow-400 text-white'
-                        : player.rank === 2
-                          ? 'bg-gray-400 text-white'
-                          : player.rank === 3
-                            ? 'bg-orange-400 text-white'
-                            : 'bg-gray-200 text-gray-600'
+                      ? 'bg-yellow-400 text-white'
+                      : player.rank === 2
+                        ? 'bg-gray-400 text-white'
+                        : player.rank === 3
+                          ? 'bg-orange-400 text-white'
+                          : 'bg-gray-200 text-gray-600'
                       }`}>
                       {player.rank <= 3 ? ['🥇', '🥈', '🥉'][player.rank - 1] : player.rank}
                     </div>
