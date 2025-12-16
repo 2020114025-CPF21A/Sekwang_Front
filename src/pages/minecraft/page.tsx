@@ -553,55 +553,82 @@ export default function Minecraft() {
             </div>
 
             {events.length > 0 ? (
-              <div className="space-y-2 max-h-96 overflow-y-auto">
+              <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
                 {events.map((event) => (
                   <div
                     key={event.id}
-                    className={`flex items-center p-3 rounded-lg ${event.eventType === 'SPAWN' || event.eventType === 'JOIN_SPAWN'
-                        ? 'bg-blue-50 border-l-4 border-blue-500'
-                        : event.eventType === 'RESPAWN'
-                          ? 'bg-purple-50 border-l-4 border-purple-500'
-                          : event.eventType === 'DEATH'
-                            ? 'bg-red-50 border-l-4 border-red-500'
-                            : event.eventType === 'CHAT'
-                              ? 'bg-yellow-50 border-l-4 border-yellow-500'
-                              : 'bg-gray-50 border-l-4 border-gray-500'
+                    className={`relative p-4 rounded-xl transition-all duration-200 hover:shadow-md ${event.eventType === 'CHAT'
+                        ? 'bg-gradient-to-r from-amber-50 to-yellow-50 border-l-4 border-amber-400'
+                        : event.eventType === 'DEATH'
+                          ? 'bg-gradient-to-r from-red-50 to-rose-50 border-l-4 border-red-500'
+                          : event.eventType === 'SPAWN' || event.eventType === 'JOIN_SPAWN'
+                            ? 'bg-gradient-to-r from-blue-50 to-cyan-50 border-l-4 border-blue-400'
+                            : event.eventType === 'RESPAWN'
+                              ? 'bg-gradient-to-r from-purple-50 to-violet-50 border-l-4 border-purple-400'
+                              : 'bg-gray-50 border-l-4 border-gray-400'
                       }`}
                   >
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-3 ${event.eventType === 'SPAWN' || event.eventType === 'JOIN_SPAWN' ? 'bg-blue-200'
-                        : event.eventType === 'RESPAWN' ? 'bg-purple-200'
-                          : event.eventType === 'DEATH' ? 'bg-red-200'
-                            : event.eventType === 'CHAT' ? 'bg-yellow-200'
-                              : 'bg-gray-200'
-                      }`}>
-                      {event.eventType === 'SPAWN' || event.eventType === 'JOIN_SPAWN' ? '🌟'
-                        : event.eventType === 'RESPAWN' ? '🔄'
-                          : event.eventType === 'DEATH' ? '💀'
-                            : event.eventType === 'CHAT' ? '💬'
-                              : '⚡'}
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center">
-                        {event.playerName && (
-                          <span className="font-medium text-gray-800">{event.playerName}</span>
-                        )}
-                        <span className={`ml-2 text-xs px-2 py-0.5 rounded ${event.eventType === 'SPAWN' || event.eventType === 'JOIN_SPAWN' ? 'bg-blue-200 text-blue-700'
-                            : event.eventType === 'RESPAWN' ? 'bg-purple-200 text-purple-700'
-                              : event.eventType === 'DEATH' ? 'bg-red-200 text-red-700'
-                                : event.eventType === 'CHAT' ? 'bg-yellow-200 text-yellow-700'
-                                  : 'bg-gray-200 text-gray-700'
-                          }`}>
-                          {event.eventType === 'SPAWN' || event.eventType === 'JOIN_SPAWN' ? '첫 접속'
-                            : event.eventType === 'RESPAWN' ? '리스폰'
-                              : event.eventType === 'DEATH' ? '사망'
-                                : event.eventType === 'CHAT' ? '채팅'
-                                  : event.eventType}
+                    <div className="flex items-start">
+                      {/* 아이콘 */}
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center mr-3 flex-shrink-0 ${event.eventType === 'CHAT' ? 'bg-amber-200 text-amber-700'
+                          : event.eventType === 'DEATH' ? 'bg-red-200 text-red-700'
+                            : event.eventType === 'SPAWN' || event.eventType === 'JOIN_SPAWN' ? 'bg-blue-200 text-blue-700'
+                              : event.eventType === 'RESPAWN' ? 'bg-purple-200 text-purple-700'
+                                : 'bg-gray-200 text-gray-700'
+                        }`}>
+                        <span className="text-xl">
+                          {event.eventType === 'CHAT' ? '💬'
+                            : event.eventType === 'DEATH' ? '💀'
+                              : event.eventType === 'SPAWN' || event.eventType === 'JOIN_SPAWN' ? '🌟'
+                                : event.eventType === 'RESPAWN' ? '🔄'
+                                  : '⚡'}
                         </span>
                       </div>
-                      {event.message && (
-                        <p className="text-sm text-gray-600 mt-1">{event.message}</p>
-                      )}
-                      <span className="text-xs text-gray-400">{formatEventTime(event.eventTime)}</span>
+
+                      {/* 내용 */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center flex-wrap gap-2">
+                          {event.playerName && (
+                            <span className="font-semibold text-gray-800">{event.playerName}</span>
+                          )}
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${event.eventType === 'CHAT' ? 'bg-amber-200 text-amber-800'
+                              : event.eventType === 'DEATH' ? 'bg-red-200 text-red-800'
+                                : event.eventType === 'SPAWN' || event.eventType === 'JOIN_SPAWN' ? 'bg-blue-200 text-blue-800'
+                                  : event.eventType === 'RESPAWN' ? 'bg-purple-200 text-purple-800'
+                                    : 'bg-gray-200 text-gray-800'
+                            }`}>
+                            {event.eventType === 'CHAT' ? '채팅'
+                              : event.eventType === 'DEATH' ? '사망'
+                                : event.eventType === 'SPAWN' || event.eventType === 'JOIN_SPAWN' ? '첫 접속'
+                                  : event.eventType === 'RESPAWN' ? '리스폰'
+                                    : event.eventType === 'LEAVE' ? '퇴장'
+                                      : event.eventType}
+                          </span>
+                          <span className="text-xs text-gray-400 ml-auto">{formatEventTime(event.eventTime)}</span>
+                        </div>
+
+                        {/* 채팅 메시지 - 말풍선 스타일 */}
+                        {event.eventType === 'CHAT' && event.message && (
+                          <div className="mt-2 relative">
+                            <div className="bg-white rounded-lg px-4 py-2 shadow-sm border border-amber-100">
+                              <p className="text-gray-800 break-words">{event.message}</p>
+                            </div>
+                            <div className="absolute -left-1 top-2 w-3 h-3 bg-white border-l border-t border-amber-100 transform rotate-[-45deg]"></div>
+                          </div>
+                        )}
+
+                        {/* 사망 메시지 - 강조 스타일 */}
+                        {event.eventType === 'DEATH' && event.message && (
+                          <div className="mt-2 bg-red-100 rounded-lg px-3 py-2 border border-red-200">
+                            <p className="text-red-700 text-sm font-medium">{event.message}</p>
+                          </div>
+                        )}
+
+                        {/* 일반 메시지 */}
+                        {event.eventType !== 'CHAT' && event.eventType !== 'DEATH' && event.message && (
+                          <p className="text-sm text-gray-600 mt-1">{event.message}</p>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}
