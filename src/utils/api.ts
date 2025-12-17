@@ -96,7 +96,7 @@ async function apiRequest(
 export async function ensureLoginGate(): Promise<void> {
   const token = getToken();
   const existingUser = getUser();
-  
+
   // 토큰이 없으면 검증하지 않음 (로그인 페이지로 유도는 각 페이지에서 처리)
   if (!token) {
     return;
@@ -127,7 +127,7 @@ export const authAPI = {
       false
     );
     if (res?.token) setToken(res.token);
-    if (res?.user)  setUser(res.user);
+    if (res?.user) setUser(res.user);
     return res;
   },
 
@@ -252,13 +252,14 @@ export const faithAPI = {
 
 // ===== 사진첩 API (S3 업로드: /gallery/upload) =====
 export const galleryAPI = {
-  upload: (file: File, title: string, category: string, description: string, uploader: string) => {
+  upload: (file: File, title: string, category: string, description: string, uploader: string, groupId?: string | null) => {
     const fd = new FormData();
     fd.append('file', file);
     fd.append('title', title);
     fd.append('category', category || '');
     fd.append('description', description || '');
     fd.append('uploader', uploader);
+    if (groupId) fd.append('groupId', groupId);
 
     const token = getToken();
     return fetch(`${BASE_URL}/gallery/upload`, {
@@ -338,6 +339,7 @@ export const mcAPI = {
   getSet: (setId: number) => apiRequest(`/mc/sets/${setId}`),
   saveResult: (username: string, setId: number, score: number) =>
     apiRequest('/mc/results', { method: 'POST', body: JSON.stringify({ username, setId, score }) }),
+  getHistory: (username: string) => apiRequest(`/mc/history/${username}`),
 };
 
 export const oxAPI = {
@@ -345,6 +347,7 @@ export const oxAPI = {
   getSet: (setId: number) => apiRequest(`/ox/sets/${setId}`),
   saveResult: (username: string, setId: number, score: number) =>
     apiRequest('/ox/results', { method: 'POST', body: JSON.stringify({ username, setId, score }) }),
+  getHistory: (username: string) => apiRequest(`/ox/history/${username}`),
 };
 
 export const speedAPI = {
@@ -352,6 +355,26 @@ export const speedAPI = {
   getSet: (setId: number) => apiRequest(`/speed/sets/${setId}`),
   saveResult: (username: string, setId: number, score: number) =>
     apiRequest('/speed/results', { method: 'POST', body: JSON.stringify({ username, setId, score }) }),
+  getHistory: (username: string) => apiRequest(`/speed/history/${username}`),
+};
+
+// ===== 퀴즈 답변 기록 API =====
+export const quizHistoryAPI = {
+  saveHistory: (data: {
+    username: string;
+    quizType: string;
+    resultId: number;
+    answers: {
+      questionIndex: number;
+      question: string;
+      userAnswer: string;
+      correctAnswer: string;
+      correct: boolean;
+    }[];
+  }) => apiRequest('/quiz-history', { method: 'POST', body: JSON.stringify(data) }),
+
+  getByResult: (quizType: string, resultId: number) =>
+    apiRequest(`/quiz-history/${quizType}/${resultId}`),
 };
 
 // 필요 시 공용 export

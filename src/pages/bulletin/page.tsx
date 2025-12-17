@@ -1,5 +1,5 @@
 // src/pages/bulletin/Bulletin.tsx
-import { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Card from '../../components/base/Card';
 import Button from '../../components/base/Button';
 import { bulletinAPI } from '../../utils/api';
@@ -13,8 +13,20 @@ type BulletinItem = {
   views: number;
 };
 
+type BulletinGroup = {
+  key: string;
+  title: string;
+  publishDate: string;
+  uploader?: string | null;
+  fileUrls: string[];
+  items: BulletinItem[];
+};
+
 export default function Bulletin() {
   const [selected, setSelected] = useState<BulletinItem | null>(null);
+  const [selectedGroup, setSelectedGroup] = useState<BulletinGroup | null>(null);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [showIndicator, setShowIndicator] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const [items, setItems] = useState<BulletinItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -73,6 +85,16 @@ export default function Bulletin() {
     load();
   }, []);
 
+  // 모달이 열릴 때 인디케이터 표시 후 2초 뒤 숨김
+  useEffect(() => {
+    if (selectedGroup) {
+      setShowIndicator(true);
+      setCurrentImageIndex(0);
+      const timer = setTimeout(() => setShowIndicator(false), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [selectedGroup]);
+
   // 그룹핑: 다중 업로드된 주보를 하나의 카드로 표시
   const grouped = useMemo(() => {
     // key by baseTitle + publishDate + uploader
@@ -105,7 +127,7 @@ export default function Bulletin() {
   }, [items]);
 
   // 상세 보기(조회수 증가 포함)
-  const openDetail = async (no: number) => {
+  const openDetail = async (no: number, group: BulletinGroup) => {
     try {
       const b = await bulletinAPI.getByNo(no); // GET /api/bulletins/{no} (조회수 +1)
       const normalized: BulletinItem = {
@@ -117,6 +139,7 @@ export default function Bulletin() {
         views: Number(b.views ?? 0),
       };
       setSelected(normalized);
+      setSelectedGroup(group); // 그룹 정보 저장
       // 목록도 업데이트(조회수 반영)
       setItems((prev) =>
         prev.map((it) => (it.bulletinNo === normalized.bulletinNo ? normalized : it))
@@ -146,7 +169,7 @@ export default function Bulletin() {
       setForm((p) => ({ ...p, files: [], previewUrls: [] }));
       return;
     }
-    
+
     // 이미지나 PDF만 필터링
     const validFiles = files.filter(f => f.type.startsWith('image/') || f.type === 'application/pdf');
     if (validFiles.length === 0) {
@@ -202,13 +225,13 @@ export default function Bulletin() {
       // 각 파일을 순차적으로 업로드
       for (let i = 0; i < form.files.length; i++) {
         const file = form.files[i];
-        const title = form.files.length > 1 
+        const title = form.files.length > 1
           ? `${form.title.trim()} (${i + 1}/${form.files.length})`
           : form.title.trim();
-        
+
         await bulletinAPI.upload(file, user.username, title, form.publishDate);
       }
-      
+
       setIsUploading(false);
       form.previewUrls.forEach(url => url && URL.revokeObjectURL(url));
       setForm({ title: '', publishDate: '', files: [], previewUrls: [] });
@@ -289,9 +312,8 @@ export default function Bulletin() {
                 onDrop={onDrop}
                 onDragOver={onDragOver}
                 onDragLeave={onDragLeave}
-                className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors ${
-                  dragOver ? 'border-blue-500 bg-blue-50' : 'border-gray-300 bg-white'
-                }`}
+                className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors ${dragOver ? 'border-blue-500 bg-blue-50' : 'border-gray-300 bg-white'
+                  }`}
               >
                 {form.files.length > 0 ? (
                   <div className="space-y-3">
@@ -374,7 +396,7 @@ export default function Bulletin() {
                 <Button
                   onClick={() => {
                     setIsUploading(false);
-                    pickFile(null);
+                    pickFiles(null);
                     setForm((p) => ({ ...p, title: '', publishDate: '' }));
                   }}
                   variant="secondary"
@@ -388,12 +410,15 @@ export default function Bulletin() {
           </Card>
         )}
 
-        {/* 상세 보기 */}
-        {selected ? (
+        {/* 상세 보기 - 여러 이미지 뷰어 */}
+        {selected && selectedGroup ? (
           <Card className="p-4">
             <div className="mb-4">
               <Button
-                onClick={() => setSelected(null)}
+                onClick={() => {
+                  setSelected(null);
+                  setSelectedGroup(null);
+                }}
                 variant="secondary"
                 size="sm"
                 className="rounded-xl"
@@ -404,41 +429,124 @@ export default function Bulletin() {
             </div>
 
             <div className="text-center">
-              <h2 className="text-xl font-bold text-gray-800 mb-2">{selected.title}</h2>
-              <p className="text-gray-600 mb-4">발행일: {fmtDate(selected.publishDate)}</p>
+              <h2 className="text-xl font-bold text-gray-800 mb-2">{selectedGroup.title}</h2>
+              <p className="text-gray-600 mb-4">발행일: {fmtDate(selectedGroup.publishDate)}</p>
 
-              <div className="mb-6">
-                {isImageUrl(selected.fileUrl) ? (
-                  <img
-                    src={selected.fileUrl}
-                    alt={selected.title}
-                    className="w-full max-w-sm mx-auto rounded-xl shadow-lg"
-                  />
-                ) : (
-                  <div className="p-6 border rounded-xl bg-gray-50 inline-flex items-center gap-3">
-                    <i className="ri-file-pdf-2-line text-3xl text-red-500" />
-                    <div className="text-left">
-                      <div className="font-medium text-gray-800">PDF 파일</div>
-                      <div className="text-sm text-gray-500 break-all">{selected.fileUrl}</div>
+              {/* 이미지 뷰어 - 스와이프/클릭 지원 */}
+              <div className="mb-6 relative">
+                <div
+                  className="relative w-full max-w-2xl mx-auto"
+                  onTouchStart={(e) => {
+                    (e.currentTarget as any).touchStartX = e.touches[0].clientX;
+                  }}
+                  onTouchMove={(e) => {
+                    (e.currentTarget as any).touchEndX = e.touches[0].clientX;
+                  }}
+                  onTouchEnd={(e) => {
+                    const touchStartX = (e.currentTarget as any).touchStartX || 0;
+                    const touchEndX = (e.currentTarget as any).touchEndX || 0;
+                    const swipeThreshold = 50;
+                    const diff = touchStartX - touchEndX;
+
+                    if (Math.abs(diff) > swipeThreshold) {
+                      if (diff > 0 && currentImageIndex < selectedGroup.fileUrls.length - 1) {
+                        setCurrentImageIndex(currentImageIndex + 1);
+                        setShowIndicator(true);
+                        setTimeout(() => setShowIndicator(false), 2000);
+                      } else if (diff < 0 && currentImageIndex > 0) {
+                        setCurrentImageIndex(currentImageIndex - 1);
+                        setShowIndicator(true);
+                        setTimeout(() => setShowIndicator(false), 2000);
+                      }
+                    }
+                  }}
+                  onClick={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const clickX = e.clientX - rect.left;
+                    const containerWidth = rect.width;
+                    const isLeftHalf = clickX < containerWidth / 2;
+
+                    if (isLeftHalf && currentImageIndex > 0) {
+                      setCurrentImageIndex(currentImageIndex - 1);
+                      setShowIndicator(true);
+                      setTimeout(() => setShowIndicator(false), 2000);
+                    } else if (!isLeftHalf && currentImageIndex < selectedGroup.fileUrls.length - 1) {
+                      setCurrentImageIndex(currentImageIndex + 1);
+                      setShowIndicator(true);
+                      setTimeout(() => setShowIndicator(false), 2000);
+                    }
+                  }}
+                  onMouseMove={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const mouseX = e.clientX - rect.left;
+                    const containerWidth = rect.width;
+                    const isLeftHalf = mouseX < containerWidth / 2;
+
+                    if (isLeftHalf && currentImageIndex > 0) {
+                      e.currentTarget.style.cursor = 'w-resize';
+                    } else if (!isLeftHalf && currentImageIndex < selectedGroup.fileUrls.length - 1) {
+                      e.currentTarget.style.cursor = 'e-resize';
+                    } else {
+                      e.currentTarget.style.cursor = 'default';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.cursor = 'default';
+                  }}
+                >
+                  {isImageUrl(selectedGroup.fileUrls[currentImageIndex]) ? (
+                    <img
+                      src={selectedGroup.fileUrls[currentImageIndex]}
+                      alt={`${selectedGroup.title} ${currentImageIndex + 1}`}
+                      className="w-full rounded-xl shadow-lg pointer-events-none"
+                    />
+                  ) : (
+                    <div className="p-6 border rounded-xl bg-gray-50 inline-flex items-center gap-3">
+                      <i className="ri-file-pdf-2-line text-3xl text-red-500" />
+                      <div className="text-left">
+                        <div className="font-medium text-gray-800">PDF 파일</div>
+                        <div className="text-sm text-gray-500 break-all">{selectedGroup.fileUrls[currentImageIndex]}</div>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
+
+                  {/* 도트 페이지 인디케이터 */}
+                  {selectedGroup.fileUrls.length > 1 && (
+                    <div
+                      className={`absolute bottom-4 left-1/2 transform -translate-x-1/2 flex gap-2 transition-opacity duration-300 ${showIndicator ? 'opacity-100' : 'opacity-0'
+                        }`}
+                    >
+                      {selectedGroup.fileUrls.map((_, idx) => (
+                        <div
+                          key={idx}
+                          className={`w-2 h-2 rounded-full transition-all duration-300 ${idx === currentImageIndex
+                            ? 'bg-blue-600 scale-125'
+                            : 'bg-gray-400 bg-opacity-60'
+                            }`}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="grid grid-cols-1 gap-3 mb-4">
-                <Button onClick={() => window.open(selected.fileUrl, '_blank')} className="py-3 rounded-xl">
+                <Button onClick={() => window.open(selectedGroup.fileUrls[currentImageIndex], '_blank')} className="py-3 rounded-xl">
                   <i className="ri-download-line mr-2"></i>
-                  파일 열기/다운로드
+                  현재 페이지 열기/다운로드
                 </Button>
                 {isAdmin && (
                   <Button
                     variant="danger"
                     onClick={async () => {
-                      if (!confirm('이 주보를 삭제하시겠습니까?')) return;
+                      if (!confirm('이 주보 그룹을 삭제하시겠습니까?')) return;
                       try {
-                        await bulletinAPI.remove(selected.bulletinNo);
+                        for (const item of selectedGroup.items) {
+                          await bulletinAPI.remove(item.bulletinNo);
+                        }
                         alert('삭제되었습니다.');
                         setSelected(null);
+                        setSelectedGroup(null);
                         await load();
                       } catch (err) {
                         console.error(err);
@@ -454,55 +562,60 @@ export default function Bulletin() {
               </div>
 
               <p className="text-sm text-gray-500">조회수: {selected.views}</p>
+              {selectedGroup.fileUrls.length > 1 && (
+                <p className="text-sm text-gray-600 mt-2">
+                  {currentImageIndex + 1} / {selectedGroup.fileUrls.length} 페이지
+                </p>
+              )}
             </div>
           </Card>
         ) : (
           // 목록
           <div className="space-y-4">
-          {loading ? (
-            <Card className="p-6 text-center text-gray-500">불러오는 중...</Card>
-          ) : grouped.length === 0 ? (
-            <Card className="p-6 text-center text-gray-500">등록된 주보가 없습니다.</Card>
-          ) : (
-            grouped.map((g) => (
-              <Card key={g.key} className="p-4 hover:shadow-lg transition-shadow cursor-pointer" onClick={() => g.items[0] && openDetail(g.items[0].bulletinNo)}>
-                <div className="flex items-start space-x-4">
-                  <div className="flex-shrink-0">
-                    {isImageUrl(g.fileUrls[0]) ? (
-                      <img src={g.fileUrls[0]} alt={g.title} className="w-20 h-28 object-cover object-top rounded-lg" />
-                    ) : (
-                      <div className="w-20 h-28 rounded-lg border flex items-center justify-center bg-white">
-                        <i className="ri-file-pdf-2-line text-2xl text-red-500" />
+            {loading ? (
+              <Card className="p-6 text-center text-gray-500">불러오는 중...</Card>
+            ) : grouped.length === 0 ? (
+              <Card className="p-6 text-center text-gray-500">등록된 주보가 없습니다.</Card>
+            ) : (
+              grouped.map((g) => (
+                <Card key={g.key} className="p-4 hover:shadow-lg transition-shadow cursor-pointer" onClick={() => g.items[0] && openDetail(g.items[0].bulletinNo, g)}>
+                  <div className="flex items-start space-x-4">
+                    <div className="flex-shrink-0">
+                      {isImageUrl(g.fileUrls[0]) ? (
+                        <img src={g.fileUrls[0]} alt={g.title} className="w-20 h-28 object-cover object-top rounded-lg" />
+                      ) : (
+                        <div className="w-20 h-28 rounded-lg border flex items-center justify-center bg-white">
+                          <i className="ri-file-pdf-2-line text-2xl text-red-500" />
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-gray-800 mb-2 line-clamp-2 text-sm">
+                        {g.title}
+                        {g.fileUrls.length > 1 && <span className="text-xs text-gray-500 ml-1">({g.fileUrls.length}장)</span>}
+                      </h3>
+
+                      <div className="flex justify-between items-center text-sm text-gray-600 mb-3">
+                        <span>{fmtDate(g.publishDate)}</span>
+                        <span>업로더: {g.uploader ?? '-'}</span>
                       </div>
-                    )}
-                  </div>
 
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-gray-800 mb-2 line-clamp-2 text-sm">
-                      {g.title}
-                      {g.fileUrls.length > 1 && <span className="text-xs text-gray-500 ml-1">({g.fileUrls.length}장)</span>}
-                    </h3>
-
-                    <div className="flex justify-between items-center text-sm text-gray-600 mb-3">
-                      <span>{fmtDate(g.publishDate)}</span>
-                      <span>업로더: {g.uploader ?? '-'}</span>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2">
-                      <Button size="sm" className="py-2 rounded-lg text-xs" onClick={() => g.items[0] && openDetail(g.items[0].bulletinNo)}>
-                        <i className="ri-eye-line mr-1"></i>
-                        보기
-                      </Button>
-                      <Button size="sm" variant="secondary" onClick={(e) => { e.stopPropagation(); window.open(g.fileUrls[0], '_blank'); }} className="py-2 rounded-lg text-xs">
-                        <i className="ri-download-line mr-1"></i>
-                        다운로드
-                      </Button>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button size="sm" className="py-2 rounded-lg text-xs" onClick={() => g.items[0] && openDetail(g.items[0].bulletinNo, g)}>
+                          <i className="ri-eye-line mr-1"></i>
+                          보기
+                        </Button>
+                        <Button size="sm" variant="secondary" onClick={(e) => { e.stopPropagation(); window.open(g.fileUrls[0], '_blank'); }} className="py-2 rounded-lg text-xs">
+                          <i className="ri-download-line mr-1"></i>
+                          다운로드
+                        </Button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </Card>
-            ))
-          )}
+                </Card>
+              ))
+            )}
           </div>
         )}
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Card from '../../components/base/Card';
 import Button from '../../components/base/Button';
 import { galleryAPI } from '../../utils/api';
@@ -30,6 +30,10 @@ type GalleryGroup = {
 export default function Gallery() {
   const [selectedCategory, setSelectedCategory] = useState('전체');
   const [selectedImage, setSelectedImage] = useState<GalleryItem | null>(null);
+  const [selectedGroup, setSelectedGroup] = useState<GalleryGroup | null>(null);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [showIndicator, setShowIndicator] = useState(true);
+  const [showDownloadMenu, setShowDownloadMenu] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [items, setItems] = useState<GalleryItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -91,6 +95,16 @@ export default function Gallery() {
     loadItems();
   }, []);
 
+  // 모달이 열릴 때 인디케이터 표시 후 2초 뒤 숨김
+  useEffect(() => {
+    if (selectedGroup) {
+      setShowIndicator(true);
+      setCurrentImageIndex(0);
+      const timer = setTimeout(() => setShowIndicator(false), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [selectedGroup]);
+
   const filtered =
     selectedCategory === '전체'
       ? items
@@ -99,13 +113,13 @@ export default function Gallery() {
   // 그룹핑: groupId가 같은 것들을 하나로 묶음
   const grouped = useMemo(() => {
     const groups = new Map<string | null, GalleryGroup>();
-    
+
     filtered.forEach(item => {
       const key = item.groupId || `single-${item.id}`;
-      
+
       if (!groups.has(key)) {
         groups.set(key, {
-          groupId: item.groupId,
+          groupId: item.groupId ?? null,
           title: item.title,
           category: item.category,
           description: item.description,
@@ -116,12 +130,12 @@ export default function Gallery() {
           items: [],
         });
       }
-      
+
       const group = groups.get(key)!;
       group.fileUrls.push(item.fileUrl);
       group.items.push(item);
     });
-    
+
     return Array.from(groups.values());
   }, [filtered]);
 
@@ -219,16 +233,13 @@ export default function Gallery() {
     try {
       // groupId 생성 (여러 장일 때만)
       const groupId = form.files.length > 1 ? crypto.randomUUID() : null;
-      
-      // 각 파일을 순차적으로 업로드
+
+      // 각 파일을 순차적으로 업로드 (제목은 동일하게, groupId로 그룹핑)
       for (let i = 0; i < form.files.length; i++) {
         const file = form.files[i];
-        const baseTitle = form.title.trim() || (file.name.includes('.') ? file.name.replace(/\.[^/.]+$/, '') : file.name);
-        const title = form.files.length > 1 
-          ? `${baseTitle} (${i + 1}/${form.files.length})`
-          : baseTitle;
-        
-        await galleryAPI.upload(file, title, form.category, form.description, user.username);
+        const title = form.title.trim() || (file.name.includes('.') ? file.name.replace(/\.[^/.]+$/, '') : file.name);
+
+        await galleryAPI.upload(file, title, form.category, form.description, user.username, groupId);
       }
 
       await loadItems();
@@ -283,9 +294,8 @@ export default function Gallery() {
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
-              className={`relative w-full rounded-2xl border-2 border-dashed p-6 transition-colors ${
-                dragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 bg-white'
-              }`}
+              className={`relative w-full rounded-2xl border-2 border-dashed p-6 transition-colors ${dragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 bg-white'
+                }`}
             >
               <div className="flex flex-col items-center justify-center text-center space-y-2">
                 <i className="ri-upload-cloud-2-line text-3xl text-gray-400" />
@@ -435,11 +445,10 @@ export default function Gallery() {
               <button
                 key={category}
                 onClick={() => setSelectedCategory(category)}
-                className={`px-4 py-2 rounded-full text-sm font-medium transition-colors cursor-pointer whitespace-nowrap ${
-                  selectedCategory === category
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-white text-gray-600 hover:bg-blue-50 hover:text-blue-600 border border-gray-200'
-                }`}
+                className={`px-4 py-2 rounded-full text-sm font-medium transition-colors cursor-pointer whitespace-nowrap ${selectedCategory === category
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-white text-gray-600 hover:bg-blue-50 hover:text-blue-600 border border-gray-200'
+                  }`}
               >
                 {category}
               </button>
@@ -460,41 +469,25 @@ export default function Gallery() {
               <Card
                 key={group.groupId || group.items[0]?.id}
                 className="overflow-hidden hover:shadow-lg transition-shadow cursor-pointer"
-                onClick={() => setSelectedImage(group.items[0])}
+                onClick={() => {
+                  setSelectedImage(group.items[0]);
+                  setSelectedGroup(group);
+                }}
               >
-                {/* 이미지 그리드 (1장이면 전체, 여러 장이면 그리드) */}
-                {group.fileUrls.length === 1 ? (
-                  <div className="mb-3">
-                    <img
-                      src={group.fileUrls[0]}
-                      alt={group.title}
-                      className="w-full h-48 object-cover object-center rounded-t-xl"
-                      loading="lazy"
-                    />
-                  </div>
-                ) : (
-                  <div className={`mb-3 grid gap-1 ${
-                    group.fileUrls.length === 2 ? 'grid-cols-2' : 
-                    group.fileUrls.length === 3 ? 'grid-cols-3' : 
-                    'grid-cols-2'
-                  }`}>
-                    {group.fileUrls.slice(0, 4).map((url, idx) => (
-                      <div key={idx} className="relative">
-                        <img
-                          src={url}
-                          alt={`${group.title}-${idx}`}
-                          className="w-full h-32 object-cover"
-                          loading="lazy"
-                        />
-                        {idx === 3 && group.fileUrls.length > 4 && (
-                          <div className="absolute inset-0 bg-black bg-opacity-60 flex items-center justify-center text-white text-lg font-bold">
-                            +{group.fileUrls.length - 4}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
+                {/* 썸네일 - 첫 번째 이미지만 표시 */}
+                <div className="relative">
+                  <img
+                    src={group.fileUrls[0]}
+                    alt={group.title}
+                    className="w-full h-48 object-cover object-center rounded-t-xl"
+                    loading="lazy"
+                  />
+                  {group.fileUrls.length > 1 && (
+                    <div className="absolute bottom-2 right-2 bg-black bg-opacity-70 text-white text-xs px-2 py-1 rounded-lg">
+                      +{group.fileUrls.length - 1}장
+                    </div>
+                  )}
+                </div>
                 <div className="p-3 space-y-2">
                   <div className="flex justify-between items-start">
                     <h3 className="font-semibold text-gray-800 text-sm line-clamp-1">
@@ -521,62 +514,193 @@ export default function Gallery() {
           )}
         </div>
 
-        {/* Image Modal */}
-        {selectedImage && (
+        {/* Image Modal - 스와이프/클릭 지원 */}
+        {selectedImage && selectedGroup && (
           <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-xl max-w-lg w-full max-h-full overflow-auto">
               <div className="p-4">
                 <div className="flex justify-between items-start mb-4">
                   <div>
-                    <h3 className="text-lg font-bold text-gray-800">{selectedImage.title}</h3>
-                    <p className="text-gray-600 text-sm">{fmtDate(selectedImage.createdAt)}</p>
+                    <h3 className="text-lg font-bold text-gray-800">{selectedGroup.title}</h3>
+                    <p className="text-gray-600 text-sm">{fmtDate(selectedGroup.createdAt)}</p>
                   </div>
-                <button
-                    onClick={() => setSelectedImage(null)}
+                  <button
+                    onClick={() => {
+                      setSelectedImage(null);
+                      setSelectedGroup(null);
+                      setShowDownloadMenu(false);
+                    }}
                     className="text-gray-400 hover:text-gray-600 cursor-pointer"
                   >
                     <i className="ri-close-line text-2xl"></i>
                   </button>
                 </div>
 
-                <img
-                  src={selectedImage.fileUrl}
-                  alt={selectedImage.title}
-                  className="w-full max-h-64 object-cover object-center rounded-xl mb-4"
-                />
+                {/* 이미지 뷰어 - 스와이프/클릭 지원 */}
+                <div
+                  className="relative w-full rounded-xl overflow-hidden mb-4"
+                  onTouchStart={(e) => {
+                    (e.currentTarget as any).touchStartX = e.touches[0].clientX;
+                  }}
+                  onTouchMove={(e) => {
+                    (e.currentTarget as any).touchEndX = e.touches[0].clientX;
+                  }}
+                  onTouchEnd={(e) => {
+                    const touchStartX = (e.currentTarget as any).touchStartX || 0;
+                    const touchEndX = (e.currentTarget as any).touchEndX || 0;
+                    const swipeThreshold = 50;
+                    const diff = touchStartX - touchEndX;
 
-                {selectedImage.description && (
-                  <p className="text-gray-700 mb-4 text-sm">{selectedImage.description}</p>
+                    if (Math.abs(diff) > swipeThreshold) {
+                      if (diff > 0 && currentImageIndex < selectedGroup.fileUrls.length - 1) {
+                        setCurrentImageIndex(currentImageIndex + 1);
+                        setShowIndicator(true);
+                        setTimeout(() => setShowIndicator(false), 2000);
+                      } else if (diff < 0 && currentImageIndex > 0) {
+                        setCurrentImageIndex(currentImageIndex - 1);
+                        setShowIndicator(true);
+                        setTimeout(() => setShowIndicator(false), 2000);
+                      }
+                    }
+                  }}
+                  onClick={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const clickX = e.clientX - rect.left;
+                    const containerWidth = rect.width;
+                    const isLeftHalf = clickX < containerWidth / 2;
+
+                    if (isLeftHalf && currentImageIndex > 0) {
+                      setCurrentImageIndex(currentImageIndex - 1);
+                      setShowIndicator(true);
+                      setTimeout(() => setShowIndicator(false), 2000);
+                    } else if (!isLeftHalf && currentImageIndex < selectedGroup.fileUrls.length - 1) {
+                      setCurrentImageIndex(currentImageIndex + 1);
+                      setShowIndicator(true);
+                      setTimeout(() => setShowIndicator(false), 2000);
+                    }
+                  }}
+                  onMouseMove={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const mouseX = e.clientX - rect.left;
+                    const containerWidth = rect.width;
+                    const isLeftHalf = mouseX < containerWidth / 2;
+
+                    if (isLeftHalf && currentImageIndex > 0) {
+                      e.currentTarget.style.cursor = 'w-resize';
+                    } else if (!isLeftHalf && currentImageIndex < selectedGroup.fileUrls.length - 1) {
+                      e.currentTarget.style.cursor = 'e-resize';
+                    } else {
+                      e.currentTarget.style.cursor = 'default';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.cursor = 'default';
+                  }}
+                >
+                  <img
+                    src={selectedGroup.fileUrls[currentImageIndex]}
+                    alt={`${selectedGroup.title} ${currentImageIndex + 1}`}
+                    className="w-full max-h-80 object-contain rounded-xl pointer-events-none"
+                  />
+
+                  {/* 도트 페이지 인디케이터 */}
+                  {selectedGroup.fileUrls.length > 1 && (
+                    <div
+                      className={`absolute bottom-3 left-1/2 transform -translate-x-1/2 flex gap-2 transition-opacity duration-300 ${showIndicator ? 'opacity-100' : 'opacity-0'
+                        }`}
+                    >
+                      {selectedGroup.fileUrls.map((_, idx) => (
+                        <div
+                          key={idx}
+                          className={`w-2 h-2 rounded-full transition-all duration-300 ${idx === currentImageIndex
+                            ? 'bg-blue-600 scale-125'
+                            : 'bg-white bg-opacity-60'
+                            }`}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* 페이지 카운터 */}
+                {selectedGroup.fileUrls.length > 1 && (
+                  <p className="text-center text-sm text-gray-600 mb-4">
+                    {currentImageIndex + 1} / {selectedGroup.fileUrls.length}
+                  </p>
+                )}
+
+                {selectedGroup.description && (
+                  <p className="text-gray-700 mb-4 text-sm">{selectedGroup.description}</p>
                 )}
 
                 <div className="flex justify-between items-center">
                   <span className="bg-blue-100 text-blue-600 text-sm px-3 py-1 rounded-full">
-                    {selectedImage.category}
+                    {selectedGroup.category}
                   </span>
                   <div className="flex items-center space-x-4">
                     <button className="flex items-center space-x-1 text-red-500 hover:text-red-600 cursor-pointer">
                       <i className="ri-heart-line"></i>
                       <span className="text-sm">{selectedImage.likes ?? 0}</span>
                     </button>
-                    <a
-                      className="flex items-center space-x-1 text-blue-500 hover:text-blue-600 cursor-pointer"
-                      href={selectedImage.fileUrl}
-                      download
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      <i className="ri-download-line"></i>
-                      <span className="text-sm">다운로드</span>
-                    </a>
+
+                    {/* 다운로드 메뉴 */}
+                    <div className="relative">
+                      <button
+                        onClick={() => setShowDownloadMenu(!showDownloadMenu)}
+                        className="flex items-center space-x-1 text-blue-500 hover:text-blue-600 cursor-pointer"
+                      >
+                        <i className="ri-download-line"></i>
+                        <span className="text-sm">다운로드</span>
+                      </button>
+                      {showDownloadMenu && (
+                        <div className="absolute right-0 bottom-8 bg-white border rounded-lg shadow-lg py-1 z-10 min-w-max">
+                          <a
+                            href={selectedGroup.fileUrls[currentImageIndex]}
+                            download
+                            target="_blank"
+                            rel="noreferrer"
+                            className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                            onClick={() => setShowDownloadMenu(false)}
+                          >
+                            현재 이미지 저장
+                          </a>
+                          {selectedGroup.fileUrls.length > 1 && (
+                            <button
+                              onClick={() => {
+                                selectedGroup.fileUrls.forEach((url, idx) => {
+                                  const link = document.createElement('a');
+                                  link.href = url;
+                                  link.download = `${selectedGroup.title}_${idx + 1}`;
+                                  link.target = '_blank';
+                                  document.body.appendChild(link);
+                                  setTimeout(() => {
+                                    link.click();
+                                    document.body.removeChild(link);
+                                  }, idx * 300);
+                                });
+                                setShowDownloadMenu(false);
+                              }}
+                              className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                            >
+                              전체 이미지 저장 ({selectedGroup.fileUrls.length}장)
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
                     {/* 관리자 삭제 버튼 */}
                     {isAdmin && (
                       <button
                         onClick={async (e) => {
                           e.stopPropagation();
-                          if (!confirm('이 사진을 삭제하시겠습니까?')) return;
+                          if (!confirm('이 사진 그룹을 삭제하시겠습니까?')) return;
                           try {
-                            await galleryAPI.delete(selectedImage.id);
+                            for (const item of selectedGroup.items) {
+                              await galleryAPI.delete(item.id);
+                            }
                             setSelectedImage(null);
+                            setSelectedGroup(null);
                             await loadItems();
                             alert('삭제되었습니다.');
                           } catch (err) {

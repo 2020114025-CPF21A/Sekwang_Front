@@ -160,18 +160,20 @@ export default function Attendance() {
       });
 
       const { latitude, longitude } = position.coords;
-      
+
       const res = await attendanceAPI.checkInByLocation(latitude, longitude);
-      
+
       if (!res.ok) {
         throw new Error(res.message || '위치 기반 출석 실패');
       }
-      
+
       setIsCheckedIn(true);
       await loadAttendanceHistory(user.username);
       alert(res.message || '위치 기반 출석이 확인되었습니다.');
     } catch (error: any) {
       console.error('Failed to check-in by location:', error);
+
+      // Geolocation API 에러 처리
       if (error.code === 1) {
         alert('위치 권한이 필요합니다. 브라우저 설정에서 위치 권한을 허용해주세요.');
       } else if (error.code === 2) {
@@ -179,7 +181,17 @@ export default function Attendance() {
       } else if (error.code === 3) {
         alert('위치 요청 시간이 초과되었습니다.');
       } else {
-        alert(error?.message ?? '위치 기반 출석에 실패했습니다.');
+        // 서버 에러 처리
+        const errorMessage = error?.message || '';
+
+        // 403 오류 또는 "403" 문자열이 포함된 경우
+        if (errorMessage.includes('403') || errorMessage.includes('Forbidden')) {
+          alert('📍 지정된 위치에서 너무 멀리 떨어져 있습니다.\n\n교회 근처(10m 이내)에서 다시 시도해주세요.');
+        } else if (errorMessage) {
+          alert(errorMessage);
+        } else {
+          alert('위치 기반 출석에 실패했습니다.');
+        }
       }
     } finally {
       setIsLoading(false);
@@ -187,7 +199,7 @@ export default function Attendance() {
   };
 
   // ========= jsQR 스캐너 =========
-  const drawLine = (begin: {x:number; y:number}, end: {x:number; y:number}, color = '#FF0000') => {
+  const drawLine = (begin: { x: number; y: number }, end: { x: number; y: number }, color = '#FF0000') => {
     const ctx = ctxRef.current;
     if (!ctx) return;
     ctx.beginPath();
@@ -299,7 +311,7 @@ export default function Attendance() {
     }
     const video = videoRef.current;
     if (video) {
-      try { video.pause(); } catch {}
+      try { video.pause(); } catch { }
       video.srcObject = null;
     }
     if (streamRef.current) {
@@ -365,7 +377,7 @@ export default function Attendance() {
   const recentSundays = useMemo(() => {
     const t = new Date(today);
     const day = t.getDay(); // 0=Sun, 1=Mon, ...
-    
+
     // 오늘이 일요일이면 오늘, 아니면 가장 최근 지난 일요일
     const mostRecentSun = new Date(t);
     if (day !== 0) {
@@ -421,9 +433,9 @@ export default function Attendance() {
           </div>
           <h1 className="text-2xl font-bold text-gray-800 mb-2">출석체크</h1>
           <p className="text-gray-600">
-            {new Date().toLocaleDateString('ko-KR', { 
-              year: 'numeric', 
-              month: 'long', 
+            {new Date().toLocaleDateString('ko-KR', {
+              year: 'numeric',
+              month: 'long',
               day: 'numeric',
               weekday: 'long'
             })}
@@ -476,7 +488,7 @@ export default function Attendance() {
         ) : (
           <Card className="mb-6 p-6">
             <h2 className="text-lg font-semibold text-gray-800 mb-4 text-center">출석 방법을 선택하세요</h2>
-            
+
             {/* QR Code Scanner (jsQR) */}
             <div className="mb-6">
               <div className="flex gap-3">
@@ -601,8 +613,8 @@ export default function Attendance() {
                   ? record.status === 'PRESENT'
                     ? 'bg-green-500'
                     : record.status === 'LATE'
-                    ? 'bg-yellow-500'
-                    : 'bg-red-500'
+                      ? 'bg-yellow-500'
+                      : 'bg-red-500'
                   : 'bg-gray-200';
 
               const iconCls =
@@ -610,8 +622,8 @@ export default function Attendance() {
                   ? record.status === 'PRESENT'
                     ? 'ri-check-line'
                     : record.status === 'LATE'
-                    ? 'ri-time-line'
-                    : 'ri-close-line'
+                      ? 'ri-time-line'
+                      : 'ri-close-line'
                   : '';
 
               return (
@@ -650,13 +662,12 @@ export default function Attendance() {
                   <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                     <div className="flex items-center">
                       <div
-                        className={`w-8 h-8 rounded-full flex items-center justify-center mr-3 ${
-                          record.status === 'PRESENT'
+                        className={`w-8 h-8 rounded-full flex items-center justify-center mr-3 ${record.status === 'PRESENT'
                             ? 'bg-green-100'
                             : record.status === 'LATE'
-                            ? 'bg-yellow-100'
-                            : 'bg-red-100'
-                        }`}
+                              ? 'bg-yellow-100'
+                              : 'bg-red-100'
+                          }`}
                       >
                         <i className={`text-sm ${getStatusIcon(record.status)}`} />
                       </div>

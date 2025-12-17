@@ -21,6 +21,36 @@ export default function Navigation() {
     }
   }, []);
 
+  // 다른 탭/로그인 동작 또는 auth 변경 시 네비게이션 상태 갱신
+  useEffect(() => {
+    const handler = (e: Event) => {
+      try {
+        const detail = (e as CustomEvent)?.detail;
+        if (detail?.user) {
+          setUser(detail.user);
+          return;
+        }
+      } catch (err) {
+        // noop
+      }
+      const userData = localStorage.getItem('user');
+      if (userData) {
+        try { setUser(JSON.parse(userData)); } catch { setUser(null); }
+      } else {
+        setUser(null);
+      }
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('authChanged', handler as EventListener);
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('authChanged', handler as EventListener);
+      }
+    };
+  }, []);
+
   const handleLogout = () => {
     removeToken();
     localStorage.removeItem('user');

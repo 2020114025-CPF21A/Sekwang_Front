@@ -394,7 +394,7 @@ export default function Minecraft() {
                     <div className="mt-2 bg-gray-100 rounded-lg p-3 font-mono text-sm">
                       <div className="flex justify-between mb-1">
                         <span className="text-gray-500">서버 주소:</span>
-                        <span className="text-gray-800">13.209.16.201</span>
+                        <span className="text-gray-800">101.79.10.144</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-500">포트:</span>
@@ -558,23 +558,23 @@ export default function Minecraft() {
                   <div
                     key={event.id}
                     className={`relative p-4 rounded-xl transition-all duration-200 hover:shadow-md ${event.eventType === 'CHAT'
-                        ? 'bg-gradient-to-r from-amber-50 to-yellow-50 border-l-4 border-amber-400'
-                        : event.eventType === 'DEATH'
-                          ? 'bg-gradient-to-r from-red-50 to-rose-50 border-l-4 border-red-500'
-                          : event.eventType === 'SPAWN' || event.eventType === 'JOIN_SPAWN'
-                            ? 'bg-gradient-to-r from-blue-50 to-cyan-50 border-l-4 border-blue-400'
-                            : event.eventType === 'RESPAWN'
-                              ? 'bg-gradient-to-r from-purple-50 to-violet-50 border-l-4 border-purple-400'
-                              : 'bg-gray-50 border-l-4 border-gray-400'
+                      ? 'bg-gradient-to-r from-amber-50 to-yellow-50 border-l-4 border-amber-400'
+                      : event.eventType === 'DEATH'
+                        ? 'bg-gradient-to-r from-red-50 to-rose-50 border-l-4 border-red-500'
+                        : event.eventType === 'SPAWN' || event.eventType === 'JOIN_SPAWN'
+                          ? 'bg-gradient-to-r from-blue-50 to-cyan-50 border-l-4 border-blue-400'
+                          : event.eventType === 'RESPAWN'
+                            ? 'bg-gradient-to-r from-purple-50 to-violet-50 border-l-4 border-purple-400'
+                            : 'bg-gray-50 border-l-4 border-gray-400'
                       }`}
                   >
                     <div className="flex items-start">
                       {/* 아이콘 */}
                       <div className={`w-10 h-10 rounded-full flex items-center justify-center mr-3 flex-shrink-0 ${event.eventType === 'CHAT' ? 'bg-amber-200 text-amber-700'
-                          : event.eventType === 'DEATH' ? 'bg-red-200 text-red-700'
-                            : event.eventType === 'SPAWN' || event.eventType === 'JOIN_SPAWN' ? 'bg-blue-200 text-blue-700'
-                              : event.eventType === 'RESPAWN' ? 'bg-purple-200 text-purple-700'
-                                : 'bg-gray-200 text-gray-700'
+                        : event.eventType === 'DEATH' ? 'bg-red-200 text-red-700'
+                          : event.eventType === 'SPAWN' || event.eventType === 'JOIN_SPAWN' ? 'bg-blue-200 text-blue-700'
+                            : event.eventType === 'RESPAWN' ? 'bg-purple-200 text-purple-700'
+                              : 'bg-gray-200 text-gray-700'
                         }`}>
                         <span className="text-xl">
                           {event.eventType === 'CHAT' ? '💬'
@@ -592,10 +592,10 @@ export default function Minecraft() {
                             <span className="font-semibold text-gray-800">{event.playerName}</span>
                           )}
                           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${event.eventType === 'CHAT' ? 'bg-amber-200 text-amber-800'
-                              : event.eventType === 'DEATH' ? 'bg-red-200 text-red-800'
-                                : event.eventType === 'SPAWN' || event.eventType === 'JOIN_SPAWN' ? 'bg-blue-200 text-blue-800'
-                                  : event.eventType === 'RESPAWN' ? 'bg-purple-200 text-purple-800'
-                                    : 'bg-gray-200 text-gray-800'
+                            : event.eventType === 'DEATH' ? 'bg-red-200 text-red-800'
+                              : event.eventType === 'SPAWN' || event.eventType === 'JOIN_SPAWN' ? 'bg-blue-200 text-blue-800'
+                                : event.eventType === 'RESPAWN' ? 'bg-purple-200 text-purple-800'
+                                  : 'bg-gray-200 text-gray-800'
                             }`}>
                             {event.eventType === 'CHAT' ? '채팅'
                               : event.eventType === 'DEATH' ? '사망'

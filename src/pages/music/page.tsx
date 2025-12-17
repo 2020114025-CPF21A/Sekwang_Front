@@ -1,5 +1,5 @@
 // src/pages/songs/Song.tsx  (원하는 경로/파일명에 배치)
-import { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Card from '../../components/base/Card';
 import Button from '../../components/base/Button';
 import { songAPI } from '../../utils/api';
@@ -17,12 +17,14 @@ type SongItem = {
 };
 
 const CATEGORIES = ['전체', '찬양', '경배', '복음성가', 'CCM', '기타'];
-const KEYS = ['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B'];
+const KEYS = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
 
 export default function Song() {
   const [items, setItems] = useState<SongItem[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('전체');
-  const [selectedImage, setSelectedImage] = useState<string | null>(null); // ✅ 전체보기용 이미지 상태
+  const [selectedGroupImages, setSelectedGroupImages] = useState<string[] | null>(null); // 그룹 이미지 전체 보기
+  const [selectedImageIndex, setSelectedImageIndex] = useState<number>(0); // 그룹 내 인덱스
+  const [showIndicator, setShowIndicator] = useState(true); // 페이지 인디케이터 표시 여부
   const [isUploading, setIsUploading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -73,6 +75,15 @@ export default function Song() {
     loadSongs();
   }, []);
 
+  // 모달이 열릴 때 인디케이터 표시 후 2초 뒤 숨김
+  useEffect(() => {
+    if (selectedGroupImages) {
+      setShowIndicator(true);
+      const timer = setTimeout(() => setShowIndicator(false), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [selectedGroupImages]);
+
   const filtered =
     selectedCategory === '전체'
       ? items
@@ -115,14 +126,14 @@ export default function Song() {
       setForm((p) => ({ ...p, files: [], previews: [] }));
       return;
     }
-    
+
     // 이미지만 필터링
     const imageFiles = files.filter(f => f.type.startsWith('image/'));
     if (imageFiles.length === 0) {
       alert('이미지 파일만 업로드할 수 있어요.');
       return;
     }
-    
+
     form.previews.forEach(url => URL.revokeObjectURL(url));
     const previews = imageFiles.map(f => URL.createObjectURL(f));
     setForm((p) => ({ ...p, files: imageFiles, previews }));
@@ -155,7 +166,7 @@ export default function Song() {
     if (!s) return '';
     const d = new Date(s);
     return isNaN(d.getTime()) ? s : d.toLocaleDateString('ko-KR');
-    };
+  };
 
   const resetForm = () => {
     form.previews.forEach(url => URL.revokeObjectURL(url));
@@ -183,17 +194,17 @@ export default function Song() {
       alert('악보 이미지를 선택하거나 드래그하여 넣어주세요.');
       return;
     }
-    
+
     setUploading(true);
     setError(null);
     try {
       // 각 파일을 순차적으로 업로드
       for (let i = 0; i < form.files.length; i++) {
         const file = form.files[i];
-        const title = form.files.length > 1 
+        const title = form.files.length > 1
           ? `${form.title.trim()} (${i + 1}/${form.files.length})`
           : form.title.trim();
-        
+
         await songAPI.upload(
           file,
           title,
@@ -204,7 +215,7 @@ export default function Song() {
           user.username
         );
       }
-      
+
       setIsUploading(false);
       resetForm();
       await loadSongs();
@@ -311,9 +322,8 @@ export default function Song() {
               onDrop={onDrop}
               onDragOver={onDragOver}
               onDragLeave={onDragLeave}
-              className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors ${
-                dragOver ? 'border-green-500 bg-green-50' : 'border-gray-300 bg-white'
-              }`}
+              className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors ${dragOver ? 'border-green-500 bg-green-50' : 'border-gray-300 bg-white'
+                }`}
             >
               {form.files.length > 0 ? (
                 <div className="space-y-3">
@@ -321,7 +331,7 @@ export default function Song() {
                     {form.files.length}개 파일 선택됨
                   </div>
                   <div className="grid grid-cols-3 gap-3 max-h-64 overflow-y-auto">
-                    {form.files.map((file, idx) => (
+                    {form.files.map((_, idx) => (
                       <div key={idx} className="border rounded-lg p-2">
                         {form.previews[idx] && (
                           <img
@@ -403,11 +413,10 @@ export default function Song() {
               <button
                 key={c}
                 onClick={() => setSelectedCategory(c)}
-                className={`px-4 py-2 rounded-full text-sm font-medium transition-colors cursor-pointer ${
-                  selectedCategory === c
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-white text-gray-600 hover:bg-blue-50 hover:text-blue-600 border border-gray-200'
-                }`}
+                className={`px-4 py-2 rounded-full text-sm font-medium transition-colors cursor-pointer ${selectedCategory === c
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-white text-gray-600 hover:bg-blue-50 hover:text-blue-600 border border-gray-200'
+                  }`}
               >
                 {c}
               </button>
@@ -423,17 +432,81 @@ export default function Song() {
             groupedSongs.map((g) => (
               <Card key={g.key} className="p-4">
                 <div className="flex gap-3 items-start">
+                  {/* 여러 이미지 썸네일 그리드 */}
                   <div className="flex-shrink-0">
-                    {g.fileUrls[0] ? (
-                      <img
-                        src={g.fileUrls[0]}
-                        alt={g.title}
-                        className="w-16 h-16 rounded-lg object-cover bg-gray-100 cursor-zoom-in hover:opacity-80 transition"
-                        onClick={() => g.fileUrls[0] && setSelectedImage(g.fileUrls[0])}
-                        onError={(e) => ((e.target as HTMLImageElement).style.visibility = 'hidden')}
-                      />
+                    {g.fileUrls.length > 0 ? (
+                      <div
+                        className="cursor-pointer hover:opacity-90 transition"
+                        onClick={() => {
+                          setSelectedGroupImages(g.fileUrls);
+                          setSelectedImageIndex(0);
+                        }}
+                      >
+                        {g.fileUrls.length === 1 ? (
+                          // 단일 이미지: 큰 썸네일
+                          <img
+                            src={g.fileUrls[0]}
+                            alt={g.title}
+                            className="w-24 h-24 rounded-lg object-cover bg-gray-100"
+                            onError={(e) => ((e.target as HTMLImageElement).style.visibility = 'hidden')}
+                          />
+                        ) : g.fileUrls.length === 2 ? (
+                          // 2개 이미지: 세로 2분할
+                          <div className="grid grid-cols-1 gap-1 w-24">
+                            {g.fileUrls.slice(0, 2).map((url, idx) => (
+                              <img
+                                key={idx}
+                                src={url}
+                                alt={`${g.title} ${idx + 1}`}
+                                className="w-24 h-11 rounded object-cover bg-gray-100"
+                                onError={(e) => ((e.target as HTMLImageElement).style.visibility = 'hidden')}
+                              />
+                            ))}
+                          </div>
+                        ) : g.fileUrls.length === 3 ? (
+                          // 3개 이미지: 1개 크게 + 2개 작게
+                          <div className="flex gap-1 w-24">
+                            <img
+                              src={g.fileUrls[0]}
+                              alt={`${g.title} 1`}
+                              className="w-16 h-24 rounded object-cover bg-gray-100"
+                              onError={(e) => ((e.target as HTMLImageElement).style.visibility = 'hidden')}
+                            />
+                            <div className="grid grid-rows-2 gap-1 flex-1">
+                              {g.fileUrls.slice(1, 3).map((url, idx) => (
+                                <img
+                                  key={idx}
+                                  src={url}
+                                  alt={`${g.title} ${idx + 2}`}
+                                  className="w-7 h-11 rounded object-cover bg-gray-100"
+                                  onError={(e) => ((e.target as HTMLImageElement).style.visibility = 'hidden')}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          // 4개 이상: 2x2 그리드 + 더보기
+                          <div className="grid grid-cols-2 gap-1 w-24 h-24 relative">
+                            {g.fileUrls.slice(0, 4).map((url, idx) => (
+                              <div key={idx} className="relative">
+                                <img
+                                  src={url}
+                                  alt={`${g.title} ${idx + 1}`}
+                                  className="w-full h-11 rounded object-cover bg-gray-100"
+                                  onError={(e) => ((e.target as HTMLImageElement).style.visibility = 'hidden')}
+                                />
+                                {idx === 3 && g.fileUrls.length > 4 && (
+                                  <div className="absolute inset-0 bg-black bg-opacity-60 rounded flex items-center justify-center">
+                                    <span className="text-white text-xs font-bold">+{g.fileUrls.length - 4}</span>
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     ) : (
-                      <div className="w-16 h-16 rounded-lg border flex items-center justify-center bg-white">
+                      <div className="w-24 h-24 rounded-lg border flex items-center justify-center bg-white">
                         <i className="ri-file-text-line text-gray-400" />
                       </div>
                     )}
@@ -484,24 +557,119 @@ export default function Song() {
           )}
         </div>
 
-        {/* ✅ 전체화면 이미지 모달 */}
-        {selectedImage && (
+
+        {/* ✅ 그룹 이미지 전체보기 모달 (스와이프 지원) */}
+        {selectedGroupImages && (
           <div
-            className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50"
-            onClick={() => setSelectedImage(null)} // 클릭 시 닫기
+            className="fixed inset-0 bg-black bg-opacity-95 flex items-center justify-center z-50"
+            onClick={() => {
+              setSelectedGroupImages(null);
+            }}
           >
-            <img
-              src={selectedImage}
-              alt="Full size"
-              className="max-w-full max-h-full object-contain"
-              onClick={(e) => e.stopPropagation()} // 이미지 클릭 시 닫히지 않도록
-            />
-            <button
-              onClick={() => setSelectedImage(null)}
-              className="absolute top-6 right-6 text-white text-3xl hover:text-gray-300"
+            <div
+              className="relative w-full h-full flex items-center justify-center"
+              onTouchStart={(e) => {
+                (e.currentTarget as any).touchStartX = e.touches[0].clientX;
+              }}
+              onTouchMove={(e) => {
+                (e.currentTarget as any).touchEndX = e.touches[0].clientX;
+              }}
+              onTouchEnd={(e) => {
+                const touchStartX = (e.currentTarget as any).touchStartX || 0;
+                const touchEndX = (e.currentTarget as any).touchEndX || 0;
+                const swipeThreshold = 50;
+                const diff = touchStartX - touchEndX;
+
+                if (Math.abs(diff) > swipeThreshold) {
+                  if (diff > 0 && selectedImageIndex < selectedGroupImages.length - 1) {
+                    // 왼쪽으로 스와이프 (다음)
+                    setSelectedImageIndex(selectedImageIndex + 1);
+                    setShowIndicator(true);
+                    setTimeout(() => setShowIndicator(false), 2000);
+                  } else if (diff < 0 && selectedImageIndex > 0) {
+                    // 오른쪽으로 스와이프 (이전)
+                    setSelectedImageIndex(selectedImageIndex - 1);
+                    setShowIndicator(true);
+                    setTimeout(() => setShowIndicator(false), 2000);
+                  }
+                }
+              }}
             >
-              ✕
-            </button>
+              {/* 이미지 컨테이너 - 좌우 클릭 영역 */}
+              <div
+                className="relative flex items-center justify-center w-full h-full px-4"
+                onClick={(e) => {
+                  e.stopPropagation();
+
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const clickX = e.clientX - rect.left;
+                  const containerWidth = rect.width;
+                  const isLeftHalf = clickX < containerWidth / 2;
+
+                  if (isLeftHalf && selectedImageIndex > 0) {
+                    setSelectedImageIndex(selectedImageIndex - 1);
+                    setShowIndicator(true);
+                    setTimeout(() => setShowIndicator(false), 2000);
+                  } else if (!isLeftHalf && selectedImageIndex < selectedGroupImages.length - 1) {
+                    setSelectedImageIndex(selectedImageIndex + 1);
+                    setShowIndicator(true);
+                    setTimeout(() => setShowIndicator(false), 2000);
+                  }
+                }}
+                onMouseMove={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const mouseX = e.clientX - rect.left;
+                  const containerWidth = rect.width;
+                  const isLeftHalf = mouseX < containerWidth / 2;
+
+                  if (isLeftHalf && selectedImageIndex > 0) {
+                    e.currentTarget.style.cursor = 'w-resize';
+                  } else if (!isLeftHalf && selectedImageIndex < selectedGroupImages.length - 1) {
+                    e.currentTarget.style.cursor = 'e-resize';
+                  } else {
+                    e.currentTarget.style.cursor = 'default';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.cursor = 'default';
+                }}
+              >
+                <img
+                  src={selectedGroupImages[selectedImageIndex]}
+                  alt={`Full size ${selectedImageIndex + 1}`}
+                  className="max-w-full max-h-full object-contain rounded-lg shadow-2xl pointer-events-none"
+                  style={{ maxWidth: '95%', maxHeight: '92vh' }}
+                />
+              </div>
+
+              {/* 도트 페이지 인디케이터 - 2초 후 사라짐 */}
+              {selectedGroupImages.length > 1 && (
+                <div
+                  className={`absolute bottom-8 left-1/2 transform -translate-x-1/2 flex gap-2 transition-opacity duration-300 ${showIndicator ? 'opacity-100' : 'opacity-0'
+                    }`}
+                >
+                  {selectedGroupImages.map((_, idx) => (
+                    <div
+                      key={idx}
+                      className={`w-2 h-2 rounded-full transition-all duration-300 ${idx === selectedImageIndex
+                        ? 'bg-white scale-125'
+                        : 'bg-white bg-opacity-40'
+                        }`}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {/* 닫기 버튼 */}
+              <button
+                onClick={() => {
+                  setSelectedGroupImages(null);
+                }}
+                className="absolute top-4 right-4 text-white text-3xl hover:text-gray-300 transition-colors bg-black bg-opacity-50 rounded-full w-10 h-10 flex items-center justify-center hover:bg-opacity-70"
+              >
+                ✕
+              </button>
+            </div>
           </div>
         )}
 
